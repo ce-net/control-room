@@ -1,0 +1,5 @@
+{"version":"ce-iam-policy-v1","statements":[{"effect":"Allow","actions":[
+"cr.shell:health","cr.shell:session",
+"cr.devices:health","cr.devices:read","cr.devices:scope:node=node-1",
+"cr.audit:health","cr.audit:read","cr.audit:scope:app=orch"
+],"resource":"any"}]}

@@ -1,0 +1,11 @@
+[package]
+name = "cr-view"
+version = "0.1.0"
+description = "Shared pieces of the control-room view cells: scope filter on the caller's chain, source states, call ids"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ce-wire = { workspace = true, features = ["server"] }
+ce-gate = { workspace = true }

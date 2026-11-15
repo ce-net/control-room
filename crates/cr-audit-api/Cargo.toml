@@ -1,0 +1,10 @@
+[package]
+name = "cr-audit-api"
+version = "0.1.0"
+description = "Typed API of the cr.audit view cell of the control room (types only)"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ce-wire = { workspace = true }

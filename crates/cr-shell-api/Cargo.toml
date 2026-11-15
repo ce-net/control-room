@@ -1,0 +1,10 @@
+[package]
+name = "cr-shell-api"
+version = "0.1.0"
+description = "Typed API of the cr.shell cell: the viewer's session and the panels their chain can use (types only)"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ce-wire = { workspace = true }
