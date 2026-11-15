@@ -1,419 +1,468 @@
-# Control room: design (2026-11-15)
+# Control room: design (2026-11-15, second edition)
 
 Leif 2026-11-15: "deploy a multi cellular system using our new frontend multi cellular frontend + baceknd and auth
 paradigm system to manage my keys and cells and allow me to renew the keys and monitor all audit trails and traces
 and everything and all of my devices in one place. like the previous app but more powerful, 100% type sfe and
 writtine with the new design."
 
-Control room is a live system at `apps.ce-net.com/control-room`: seven panels, each a UI cell with its own backend
-cell, composed by one shell. It owns no secrets and almost no state. It reads the cells that already hold the truth
-and asks them, through passkey-approved typed ops, to change things.
+Control room is a live system: seven panels and a shell, eight full-stack cells, composed on one page. It owns no
+secret and no source of truth. It reads the cells that already hold the truth and asks them, through
+passkey-approved typed ops, to change things.
 
-Status of the paradigm reference: `repo:ce/docs/FULLSTACK-CELLS.md` was not on disk when this was written
-(checked at `repo:ce@1d770e9`). This design is built on what that paradigm is made of and which does exist:
-`repo:multicell-native/docs/CELL-CONTRACT.md` (a face talks only to typed ops), `repo:wire-ws-door` (browser speaks
-ce-wire with a short grant), `ce-wire-gen --lang ts-web`, `repo:rust-stack/docs/CAPABILITY-CHAIN.md` and
-`repo:ce/docs/LIVE-SYSTEMS-2026-11-15.md`. Section 12 lists what to re-check against FULLSTACK-CELLS.md when it lands.
+This edition replaces the first one (`repo:control-room@54f3988`), which was written before the paradigm document
+existed. It follows `repo:ce/docs/FULLSTACK-CELLS.md` (`repo:ce@04b8d44`, fix `6022520`), called FS below, section
+by section. Section 12 says what happens to the code written under the first edition.
 
-## 1. Rules this design holds
+## 1. Rules
 
-1. One function per cell, typed contract in `<cell>-api` (`ce_wire::api!`), Rust backend, generated TypeScript.
-2. A UI cell never uses fetch, raw HTTP or a hand-written type for a cell answer. Its only way out is its
-   generated client.
-3. Secrets never leave `cell:keys`. No control-room cell holds `keys:read`. The UI shows metadata only: name,
-   holders, expiry, rotation state, version, short hash, last check.
-4. Every change (renew, rotate, stop, move, grant) is a typed op the owning cell performs after it has verified
-   Leif's P-256 passkey signature over exactly that change. Control room proposes; it cannot perform.
-5. What a viewer sees is decided by the backend cell from the caller's capability chain. The UI hides nothing on its
-   own; a UI that is tampered with gets the same rows.
-6. Other machines are reached only through typed cell ops. No host shell anywhere in the path.
-7. Reuse first. New code is the seven thin view cells, the shell, the UI cells and three additive ops (section 5).
+The seven rules of FS section 1 hold unchanged. What they mean here:
 
-## 2. What exists and is reused as is
+1. Each panel is one full-stack cell: one repo, one contract crate `<name>-api`, one backend program, one `ui/`
+   half. The face is the same cell's `ui { }` block, not a second cell.
+2. Every panel has its own running backend, the shell included (`cr.shell` answers its own layout).
+3. Declared once, in a Rust contract. TS types, clients, view bindings, the route, the manifest tree, the grants
+   and the deployment plan are generated. `decl.lint` fails the build on a second declaration.
+4. The server decides what the viewer gets. A panel the viewer may not have is not in the manifest, its bundle is
+   refused, and its name never reaches the browser. No view hides anything by itself.
+5. A view places another cell's view only through a typed slot pinned by ce-ref in `cell.lock`.
+6. Majors N and N-1 are served together during every change.
+7. Machines change only through typed cell ops. Secrets stay in `cell:keys`: no control-room cell holds
+   `keys:read`, no control-room type has a field that can carry a value, and a renewal is an op `keys` performs
+   itself after it has verified Leif's passkey signature over exactly that change.
+
+## 2. What exists and is reused
 
 | Need | Cell / crate | Ops used (right) |
 |---|---|---|
-| Key metadata | `keys@1` `repo:keys-cell` | `List` (`keys:list`), `Meta` (`keys:meta`), `Audit` (`keys:audit`), `Boxes` (`keys:list`) |
-| What renews itself | `keys autopilot` and its one "needs you" card, `repo:keys-cell/docs/keys-autopilot.service` | read through the new `keys` op in section 5 |
-| Store grant renewal | `state.grant-renew@1` | `Renew{dry_run}` (`state.grant-renew:renew`) gives `RenewReport{due, renewed, skipped, failed}` |
-| Grants held, revoked | `access.grant@1` | `Grants`, `Revoked` (`access.grant:read`), `Check` (`:check`) |
-| Policy, who may hold what | `repo:ce-iam`, cap v3 + CAL, `cap.mint/admit/revoke/ledger` | chain verify, attenuation, `Via` conditions |
-| Passkey approval | `root.approve@1` | `Propose`, `Pending`, `Get`, `Sign`, `Cancel`, `Devices` |
-| Message approvals | `feed.approve@1` | `List`, `Count` (`feed.approve:read`) |
-| Needs-you items | `needs.list@1` | `List` (`needs.list:read`) |
-| Devices | `fleet.inventory@1` | `State`, `Node{node, section}`, `Items` (`fleet.inventory:read`) |
-| Device health | `node.doctor` | its report, read through `fleet.inventory` `Node{section:"doctor"}` |
-| Phones, passkeys | `root.approve` `Devices`, `account.passkey` `List` | enrolled approval devices and sign-in passkeys |
-| Running cells | `orch@1` | `Ps` (`orch:read`), `Up`, `Down`, `Restart` (`orch:manage`), `Logs` |
-| Replicas, failover | `repo:ce/crates/ce-replica`, per-cell `CellInstances`/`CellDeploy` (ops 901, 903) | placement and instance list |
-| Versions, pinned builds | `artifact.index`, `cell.build` | `List`, `Resolve` |
-| Audit | `audit.log@1` | `Query`, `Trail`, `Verify` (`audit:read`, `audit:trail`) hash-chained rows, signed head |
-| Receipts offline | `repo:ce-net-capability-verify` | verify a chain or a receipt file without the mesh |
-| Traces | `ui.trace@1` | `Query(Ask)`, `Summary` (`ui.trace:read`); `Span{call_id, parent, api, op, node, ms, outcome}` |
-| Sign-in, session | `account.signin`, `account.passkey` on `apps.ce-net.com` | passkey sign-in, gate-signed person |
-| Browser to cell | `wire.ws-door` | `Mint` gives the page a 60 s to 24 h grant; the page speaks ce-wire on `/wire` |
-| Typed rows | `ce-db-rs` `#[derive(Record)]`, `ce-db-ts` | control room's own small state |
-| Typed refs, macros | `repo:ce-ref` (`ce-ref-id`), `cell-macros` (`ce_ref!`, `use_cell!`) | every link in a row is a typed `Ref<Kind>` |
-| Codegen | `ce-wire-gen` (`ts-web`, `json`, `check`, `classify`) | clients, drift gate |
-| Look | `repo:celldocs-ui/src/components.ts`, `tokens.css`, the ce design standard | components and tokens, light theme default |
-| Previous app | `repo:keys-cell/crates/keys-ui`, `repo:needs-list` | its key list and needs card are the starting point of the keys and renewals panels |
+| Key metadata | `keys@1` `repo:keys-cell` | `List`, `Boxes` (`keys:list`), `Meta` (`keys:meta`), `Audit` (`keys:audit`) |
+| What renews itself | keys autopilot and its needs-you card, `repo:keys-cell` | through the added op of section 7 |
+| Store grant renewal | `state.grant-renew@1` | `Renew{dry_run}` gives `RenewReport{due, renewed, skipped, failed}` |
+| Grants held, revoked | `access.grant@1`, `cap.ledger` | `Grants`, `Revoked` (`access.grant:read`) |
+| Policy | cap v3, CAL, `repo:ce-iam`, `cap.request`, `cap.mint`, `cap.revoke` | chain verify, `narrow`, caveats |
+| One-popup approval | `grant.bundle@1` `repo:grant-bundle`, card served by `feed.approve` | `Propose`, `Get`, `List`, `Verify` |
+| Signature check | `approval.check`, `root.approve@1` (Leif's P-256 WebAuthn device key) | `Pending`, `Devices`; `RootKey` items |
+| Needs-you items | `needs.list@1`, `feed.approve@1` | `List` (`needs.list:read`, `feed.approve:read`) |
+| Devices | `fleet.inventory@1`, `node.doctor` | `State`, `Node{node, section}`, `Items` (`fleet.inventory:read`) |
+| Phones, passkeys | `root.approve` `Devices`, `account.passkey` `List` | approval devices and sign-in passkeys |
+| Running cells | `orch@1`, `cell.registry`, `deploy.version`, `repo:ce/crates/ce-replica` | `Ps`, `Logs` (`orch:read`); `Up`, `Down`, `Restart` (`orch:manage`) |
+| Builds | `cell.build`, `artifact.index` | `Publish`, `List`, `Resolve` |
+| Audit | `audit.log@1` | `Query`, `Verify` (`audit:read`), `Trail` (`audit:trail`): hash-linked rows, signed head |
+| Receipts offline | `repo:ce-net-capability-verify` | check a chain or a receipt file without the mesh |
+| Traces | `ui.trace@1` | `Query`, `Summary` (`ui.trace:read`) |
+| Sign-in | `account.signin`, `account.session`, `account.passkey` on apps.ce-net.com | cookie to person |
+| Person to browser grant | `person.grant` `Mint` through `wire.ws-door` | chain in the URL fragment, one socket on `/wire` |
+| Records | `ce-db-rs` `#[derive(Record)]`, `state.store@2`, `ce-replica` | projections and their `Watch` |
+| Contract, codegen | `ce_wire::api!`, `ce-wire-gen` (`freeze`, `adapt`, `json`), `ce-gate`, `cell-check conform` | all contracts |
+| Previous app | `repo:keys-cell/crates/keys-ui`, `repo:needs-list` | key list and needs card are the base of two panels |
+
+From FS, used in their fixed shapes and not on disk on 2026-11-15 (checked in `~/dev`): `ui { }` in `ce-wire`,
+`ce-wire-gen --lang ts-ui`, `ui-part`, `ui-rt`, `ui-host`, `ui-kit`, `ui-chain`, `layer-view`, `cell-site`
+(`site!`), `ui.manifest`, `ui.bundle`, `ui.serve`, `site.gateway`, `decl.lint`, `contract.check`, `cap.explain`,
+`cap.inspect`, `ui.inspect`, `deploy.ship Plan/Apply` over `net!`. Control room is their first consumer; slice 1
+(section 13) builds or takes the FS slice 1 subset and nothing wider.
 
 ## 3. Shape
 
 ```
-browser (apps.ce-net.com/control-room, signed in with a passkey)
-  shell UI ── cr.shell ───────────── session grant (wire.ws-door Mint), panel list for this viewer
-   ├ Keys panel ───── cr.keys ─────── keys, access.grant
-   ├ Cells panel ──── cr.cells ────── orch, ce-replica instance ops, artifact.index
-   ├ Devices panel ── cr.devices ──── fleet.inventory, node.doctor, root.approve Devices, account.passkey
-   ├ Audit panel ──── cr.audit ────── audit.log (every node), keys Audit, cap.ledger
-   ├ Traces panel ─── cr.traces ───── ui.trace, audit.log (join on call id and chain id)
-   ├ Renewals panel ─ cr.renewals ─── keys autopilot, state.grant-renew, access.grant, needs.list
-   └ Approvals panel  cr.approvals ── root.approve, feed.approve
+browser ── GET ce-net.com/x/control ──▶ site.gateway (ops-1, leif-desk)
+   cookie -> account.session -> person.grant Mint -> chain C
+   ui.manifest Resolve{route, C} -> only the cells C may receive; ui.serve gives only those bundles
+cr.shell ─┬ slot keys ───── cr.keys ────── keys, access.grant
+          ├ slot cells ──── cr.cells ───── cell.registry, orch, deploy.version, artifact.index, ce-replica
+          ├ slot devices ── cr.devices ─── fleet.inventory, node.doctor, root.approve Devices, account.passkey
+          ├ slot audit ──── cr.audit ───── audit.log on every node, keys Audit, cap.ledger
+          ├ slot traces ─── cr.traces ──── ui.trace, audit.log (join on call id)
+          ├ slot renewals ─ cr.renewals ── keys autopilot, state.grant-renew, access.grant; slot keys: cr.keys
+          ├ slot approvals  cr.approvals ─ grant.bundle, root.approve, feed.approve, needs.list
+          └ slot inspect ── cap.inspect ── cap.explain (Leif only, later slice)
 ```
 
-A panel is one repo and one unit of reuse: `crates/cr-<p>-api` (contract), `crates/cr-<p>` (backend cell),
-`ui/` (the UI cell), `sdk/ts-web/` (generated client), `cell.toml`. Each is made with `cell-forge new-cell`.
-`repo:control-room` holds only the shell (`cr.shell` + shell UI), `ceapp.toml`, the face entry and this document.
-Another app can mount the Keys panel without taking anything else.
-
-### 3.1 Backend cells are views, not stores
-
-Each `cr.<p>` cell is stateless: it holds read grants on its sources, joins their answers into rows shaped for one
-panel, filters by the caller's chain, and returns. It caches for a few seconds at most. Stop one and nothing is lost;
-that is why they can run on every node (section 9). The exceptions are `cr.approvals` (bundles, section 6) and
-`cr.shell` (viewer preferences), which keep typed records in `state.store`.
-
-### 3.2 The envelope every view op returns
+The route and the tree are declared once, in `site!` (`cell-site`):
 
 ```rust
-pub struct View<T> {
-    pub rows: Vec<T>,
-    pub as_of_ms: u64,
-    pub sources: Vec<SourceState>,   // per source cell: Live | Stale{age_s} | Down{why} | Refused
-    pub narrowed: bool,              // true when this viewer's chain removed rows or fields
-    pub can_ask: Vec<String>,        // rights this viewer may request to see more
-    pub next: Option<String>,        // cursor
+// repo:control-room/crates/control-room-site/src/lib.rs   moves into repo:ce-net-site when that repo exists
+site! {
+    pub CONTROL_ROOM; host "ce-net.com"; policy control_room_policy::POLICY; kit repo:ui-kit@<pinned>;
+    route "/x/control/*" => cr.shell@2 { slots {
+        keys: cr.keys@2;  cells: cr.cells@1;  devices: cr.devices@2;  audit: cr.audit@2;  traces: cr.traces@1;
+        renewals: cr.renewals@1 { slots { keys: cr.keys@2; } };
+        approvals: cr.approvals@1;  inspect: cap.inspect@1;
+    } };
 }
 ```
 
-`narrowed` is a flag, never a count: a narrow viewer does not learn how much is hidden. `sources` makes a dead node
-visible as "debian: no answer for 3 d" instead of an empty table.
+`/x/control` is where the gateway answers today (FS section 10, step a). The final route is `ce-net.com/control`,
+and the same shell fills a slot of `site.admin`. `apps.ce-net.com/control-room` (the first edition's face) keeps
+serving until the new route has passed section 13's proof on real use, then answers 301.
 
-## 4. Contracts, rights, records
+Repos, one per cell: `repo:control-room` (`cr.shell`, the site crate, `control-room-policy`, this document),
+`repo:cr-keys`, `repo:cr-cells`, `repo:cr-devices`, `repo:cr-audit`, `repo:cr-traces`, `repo:cr-renewals`,
+`repo:cr-approvals`. Each: `crates/<name>-api`, `crates/<name>`, `ui/src/<View>.ts` (the only hand-written
+frontend file), `ui/gen/` (generated), `versions/`, `cell.toml`, `cell.lock`. Any other site can place the keys
+cell in a slot without taking anything else.
 
-All ops are read-only unless marked. Every row carries `refs: Vec<Ref>` (typed ce-refs) so any row links to its
-cell, node, key, receipt or trace.
+### 3.1 Backends are projections, not stores of truth
 
-### cr.keys@1
+A `cr.<p>` backend holds narrow read grants on its sources, joins their answers into rows for one panel, and keeps
+those rows as a typed record collection in `state.store` (section 6). That collection is what `Watch` streams and
+what `layer-view` filters per viewer. It is a cache: drop it and it is rebuilt from the sources. A backend holds no
+write right that works without Leif's signature (section 7).
+
+Every contract has `Sources(()) -> Vec<Source{cell, node, state: Live | Stale{age_s} | Down{why} | Refused{need},
+ms}>`, so a dead node reads "debian: no answer for 3 d" and not an empty table. `Source` rows are filtered by the
+same row caveats as the data.
+
+## 4. Contracts
+
+Shared types (`Health`, `Source`, `SourceState`, `Ref`, `KeyName`, `NodeName`, `CallId`, `ChainId`) are declared
+once in `repo:control-room/crates/cr-types-api` and imported; `ce-wire-gen` emits them as one shared module.
+Contracts that existed under the first edition change shape (rows as a stream, `Part` fields, no envelope), which
+is a breaking change, so they are major 2 with `versions/v1.rs` frozen; new cells start at major 1.
+
+### cr.keys@2 (in full; the others follow the same form)
 
 ```rust
+// repo:cr-keys/crates/cr-keys-api/src/lib.rs
 ce_wire::api! {
-    api CrKeys = "cr.keys", version 1;
+    pub CrKeys = "cr.keys" @ 2;
     types {
-        pub enum RotationState { Fresh, DueSoon { days: u32 }, Overdue { days: u32 }, Rotating, Failed(String), Manual }
-        pub struct Holder { pub lane: String, pub home: String, pub not_after: i64 }
-        pub struct KeyRow {
-            pub name: String, pub service: String, pub purpose: String, pub owner: String,
-            pub version: i64, pub sha256_8: String, pub written_at: i64, pub expires_at: Option<i64>,
-            pub rotation: RotationState, pub self_renewing: bool,
-            pub holders: Vec<Holder>, pub last_opened: i64, pub last_check: String, pub last_check_at: i64,
-            pub refs: Vec<Ref>,
-        }
-        pub struct ShareRow { pub key: String, pub to: String, pub due_at: i64, pub state: String, pub refs: Vec<Ref> }
-        pub struct KeysAsk { pub q: String, pub due_within_days: Option<u32>, pub cursor: Option<String> }
-        pub enum CrError { Refused { needs: String }, Source { cell: String, why: String }, Invalid(String) }
+        pub enum RotationState open { Fresh, DueSoon { days: u32 }, Overdue { days: u32 }, Rotating,
+                                      Failed { why: String }, Manual }
+        pub struct Holder  { pub name: String, pub home: NodeName, pub lanes: Vec<String>, pub not_after: i64 }
+        pub struct KeyRow  { pub name: KeyName, pub service: String, pub purpose: String, pub owner: String,
+                             pub version: i64, pub sha256_8: String, pub written_at: i64,
+                             pub expires_at: Option<i64>, pub rotation: RotationState, pub self_renewing: bool,
+                             pub last_check: String, pub last_check_at: i64,
+                             pub holders: Part<Vec<Holder>, "cr.keys:holders">,     // field-level right
+                             pub last_opened: Part<i64, "cr.keys:history">,
+                             pub refs: Vec<Ref> }
+        pub struct ShareRow { pub key: KeyName, pub to: String, pub due_at: i64, pub state: String }
+        pub struct KeysQuery { pub q: Option<String>, pub due_within_days: Option<u32> }
     }
     ops {
-        1 => HealthOp(()) -> Health, needs "cr.keys:health";
-        2 => List(KeysAsk) -> Result<View<KeyRow>, CrError>, needs "cr.keys:read";
-        3 => One(String) -> Result<KeyRow, CrError>, needs "cr.keys:read";
-        4 => Shares(KeysAsk) -> Result<View<ShareRow>, CrError>, needs "cr.keys:read";
-        5 => History(String) -> Result<View<KeyEvent>, CrError>, needs "cr.keys:history";
+        1 => HealthOp(()) -> Health                        needs "cr.keys:health";
+        2 => List(KeysQuery) -> Vec<KeyRow>                needs "cr.keys:read";
+        3 => Watch(KeysQuery) -> stream Delta<KeyRow>      needs "cr.keys:read";
+        4 => Shares(KeysQuery) -> Vec<ShareRow>            needs "cr.keys:read";
+        5 => History(KeyName) -> Vec<KeyEvent>             needs "cr.keys:history";
+        6 => Sources(()) -> Vec<Source>                    needs "cr.keys:read";
+    }
+    ui {
+        view KeyList {
+            props  { q: Option<String>, due_within_days: Option<u32> }
+            needs  "cr.keys:read";                   // without it: no manifest entry, no bundle, slot empty
+            events { opened(KeyName); renew(KeyName); rotate(KeyName); }
+            data   { rows: Watch(KeysQuery), shares: Shares(KeysQuery), sources: Sources(()) }
+            speaks [2];
+        }
     }
 }
 ```
 
-`KeyRow` has no field that can carry a value; the type is the guarantee. `cr.keys` holds `keys:list`, `keys:meta`,
-`keys:audit` and nothing else, and its test asserts that its grant has no `keys:read`.
-Row scope: `cr.keys:read` may be attenuated to `service=<glob>` or `owner=<lane>`; holders are a field that needs
-`cr.keys:holders`, else it comes back empty with `narrowed = true`.
-
-### cr.cells@1
-
-`CellRow { api, version, build: Ref<Pinned>, placement: Vec<String>, instances: Vec<Instance{ node, id, state, since_ms, health, leader }>, wanted_replicas, live_replicas, drift: Option<String>, protected: bool, refs }`
-
-| Op | Right |
-|---|---|
-| `List(CellsAsk{q, node, unhealthy_only})`, `One(api)` | `cr.cells:read` (scope `node=`, `api=`) |
-| `Logs(LogsAsk)` stream | `cr.cells:logs` |
-| `Plan(Change) -> Planned{steps, refuses}` | `cr.cells:plan` |
-
-`Change` is `Start{api,node} | Stop{api,node} | Restart{api,node} | Move{api,from,to} | Deploy{api,node,version}`.
-`Plan` is a dry run that returns the exact `orch` and instance ops, in order, and anything that refuses. Performing
-it goes through an approval bundle (section 6); `orch` runs it. `Move` is always `Up` on the target, health and
-replica caught up, then `Down` on the source. `protected` cells (`state.store`, `keys`, the door, `root.approve`)
-refuse `Stop` and `Move` in `Plan` with the reason; a node's `state.store` is never stopped because its gate reads it.
-
-### cr.devices@1
-
-`DeviceRow { id, name, kind: Server | Desktop | Laptop | Phone | Tablet, online, last_seen_s, tailscale: Option<Tailnet{ ip, online, exit_node, key_expires_at }>, disk: Vec<Disk{ mount, used_pct, free_gb }>, load: Option<f32>, doctor: Doctor{ ok, failing: Vec<String>, at }, cells: u32, passkeys: Vec<PasskeyRef{ label, enrolled_at, last_used_at }>, refs }`
-
-| Op | Right |
-|---|---|
-| `List(DevicesAsk)`, `One(id)` | `cr.devices:read` (scope `node=`) |
-| `Doctor(id) -> DoctorReport` (asks the node's `node.doctor` now) | `cr.devices:doctor` |
-
-Servers and desktops (ops-1, leif-desk, the Mac, debian) come from `fleet.inventory` `State` and `Node`. The Mac
-answers only through its own typed cells. Phones come from `root.approve` `Devices` and `account.passkey` `List`: a
-phone is a device because it holds an approval key, and the row shows when it last signed. A node that does not
-answer stays in the list as offline with its last row and age.
-
-### cr.audit@1
-
-`AuditRow { seq, at_ms, node, writer, actor, app, op, target, ok, detail, chain_id: Option<String>, call_id: Option<String>, prev_hash, hash, kind: Call | Grant | Revoke | Approval | KeyEvent, refs }`
-
-| Op | Right |
-|---|---|
-| `Search(AuditAsk{q, actor, app, op, target_prefix, kind, since_ms, until_ms, only_refused, cursor})` | `cr.audit:read` (scope `app=`, `actor=`) |
-| `Chain(VerifyAsk{node}) -> ChainState{rows, head_seq, anchored_seq, first_bad, why}` | `cr.audit:verify` |
-| `Receipt(RowId) -> Receipt{row, proof: Vec<Hash>, head_sig}` | `cr.audit:read` |
-| `Export(AuditAsk) -> stream AuditRow` | `cr.audit:export` |
-
-It fans `Query`/`Trail` out to `audit.log` on every node, merges by time, and adds `keys` `Audit` rows and
-`cap.ledger` rows as the same type. `prev_hash`/`hash` are shown, and the UI cell re-computes the link for the rows
-on screen so a broken chain is visible in the browser, not only reported by the server. `Receipt` can be checked
-offline with `repo:ce-net-capability-verify`.
-
-### cr.traces@1
-
-`TraceRow { call_id, root_api, root_op, started_ms, ms, outcome, nodes: Vec<String>, cells: u32, chain_id: Option<String> }`
-`SpanRow { call_id, parent, api, op, node, start_ms, ms, outcome, chain_id, chain_depth, right_used, audit_seq: Option<u64> }`
-
-| Op | Right |
-|---|---|
-| `Recent(TraceAsk{since_ms, api, op, min_ms, only_failed, chain_id})`, `Summary(TraceAsk)` | `cr.traces:read` (scope `api=`) |
-| `Tree(call_id) -> Vec<SpanRow>` (the whole call, across cells and nodes) | `cr.traces:read` |
-| `ByChain(chain_id) -> View<TraceRow>` (everything done under one capability chain) | `cr.traces:read` |
-
-Source is `ui.trace` `Query`/`Summary`. The capability chain id (cap hash of the leaf, `repo:rust-stack/docs/CAP-HASH.md`)
-is joined from the audit row written by the ledger stage for the same call. A span, its audit row and its chain
-therefore open from each other in one click.
-
-### cr.renewals@1
-
-`RenewalRow { what: Key | Share | StoreGrant | AccessGrant | Cert | TailscaleKey | Passkey, name, holder, expires_at, mode: SelfRenewing { next_run_at, last: Outcome } | NeedsLeif { why, propose: Change }, refs }`
-
-| Op | Right |
-|---|---|
-| `List(RenewAsk{within_days, mode})` | `cr.renewals:read` |
-| `Runs(RenewAsk) -> View<AutopilotRun>` | `cr.renewals:read` |
-
-Two lists by construction: "renews itself" (with the next run and the last result) and "needs you" (with the
-reason and a ready `Change` to approve). Sources: the keys autopilot state and its needs-you card, `state.grant-renew`
-`Renew{dry_run: true}` per node, `access.grant` `Grants`, tailscale key expiry from `cr.devices`.
-
-### cr.approvals@1 (the only cell that writes)
-
-```rust
-pub enum Change {
-    KeyRenew { name: String }, KeyRotate { name: String }, ShareSend { key: String, to: String },
-    StoreGrantRenew { node: String, label: String }, Grant { to: String, abilities: Vec<String>, not_after: i64 },
-    Revoke { chain_id: String }, Cell(cr_cells_api::Change),
-}
-pub struct Item { pub id: String, pub change: Change, pub performer: String, pub effect: String, pub state: ItemState }
-pub struct Bundle { pub id: String, pub items: Vec<Item>, pub by: String, pub until: u64, pub to_sign: String, pub state: BundleState, pub refs: Vec<Ref> }
-```
-
-| Op | Right |
-|---|---|
-| `Inbox(()) -> View<Bundle>` (bundles, `root.approve` `Pending`, `feed.approve` `List` as one list) | `cr.approvals:read` |
-| `Propose(Vec<Change>) -> Bundle` | `cr.approvals:propose` |
-| `SignStart(bundle_id) -> GetOptions`, `SignFinish(Assertion) -> Bundle` | `cr.approvals:sign` (only Leif's chain) |
-| `Cancel(bundle_id)` | `cr.approvals:cancel` |
-| `Watch(bundle_id) -> stream ItemState` | `cr.approvals:read` |
-
-### cr.shell@1
-
-`Session(()) -> SessionInfo{person, chain_id, expires_at, panels: Vec<PanelGrant{panel, rights}>}` (`cr.shell:session`),
-`Prefs`/`SetPrefs` (`cr.shell:prefs`). `panels` is computed from the chain, so the shell mounts only panels the
-viewer can use.
-
-### Records (ce-db, `state.store`)
-
-| Record | Cell | Fields |
-|---|---|---|
-| `cr.bundle` | `cr.approvals` | id, items, by, until, to_sign, sig, device, state, created_ms |
-| `cr.bundle_item` | `cr.approvals` | bundle, index, change, performer, state, receipt_seq |
-| `cr.spent` | each performing cell | bundle, index, at_ms (an approved item runs once) |
-| `cr.prefs` | `cr.shell` | person, layout, theme (`light` default), saved filters |
-
-No record holds a secret, a token or a grant body; a grant is referred to by its chain id.
-
-## 5. Three additive ops in existing cells
-
-Each is an added op, which `ce-wire-gen classify` reports as additive: old callers keep working.
-
-1. `keys`: `Renew(RenewReq{name, mode: Renew | Rotate, proof: ApprovalProof}) -> Result<KeyInfo, KeysError>`, needs
-   `keys:renew`. keysd verifies the proof, runs the same code the autopilot runs for that key, writes the new
-   version sealed, and answers with `KeyInfo` (metadata). The new value never appears in a request or an answer.
-2. `keys`: `Autopilot(()) -> AutopilotState{rules, last_runs, needs_you}`, needs `keys:list`. The autopilot's own
-   state as a typed answer, so `cr.renewals` does not read a file.
-3. `orch`: `Apply(ApplyReq{change, proof: ApprovalProof}) -> Result<Done, OrchError>`, needs `orch:apply`. The
-   approved form of `Up`/`Down`/`Restart`; `orch:manage` stays with operators and is not given to control room.
-
-`ApprovalProof` and `verify_item(proof, enrolled_devices, performer, now)` live in a small crate `approval-proof`
-lifted from `root.approve`'s existing P-256 verification, used by `keys`, `orch`, `state.grant-renew` and
-`access.grant`.
-
-## 6. Approvals: one popup for a bundle
-
-1. Any panel builds `Change`s (the Renewals panel offers "approve all 6 due"). `cr.approvals` `Propose` fills in for
-   each item the performer cell and a plain-words `effect` taken from that cell's dry run, and computes
-   `to_sign = "ce.control-room.approve v1\n" || sha256(canonical{items, by, until, nonce})`.
-2. The Approvals panel shows every item with its effect. One button, one WebAuthn prompt: `SignStart` returns options
-   whose challenge is `to_sign`; Leif's passkey (P-256) signs; `SignFinish` checks the assertion against the devices
-   enrolled in `root.approve` and stores it.
-3. `cr.approvals` then calls each performer with `ApprovalProof{bundle (canonical), index, assertion, device}`.
-4. The performer trusts nothing about `cr.approvals`. It checks: the signature is by an enrolled device of the mesh
-   root person; its own item is in the signed bundle at `index`; `until` has not passed; `(bundle, index)` is not in
-   `cr.spent`. Then it performs, writes `cr.spent`, and its ledger stage writes the audit row with the bundle id.
-5. `Watch` streams item states to the panel: `Approved`, `Running`, `Done{receipt}`, `Failed{why}`. A failed item
-   does not undo the others; it returns to the inbox as a new proposal.
-
-So a stolen session, a compromised `cr.approvals` or a changed UI cannot renew, stop or grant anything: the
-signature covers the exact changes and the performing cell verifies it itself.
-
-## 7. Auth and what a viewer sees
-
-1. Sign-in is the existing passkey sign-in on `apps.ce-net.com` (`account.signin`, gate-signed person).
-2. `cr.shell` asks `ce-iam` for that person's control-room rights and has `wire.ws-door` `Mint` a grant for the
-   browser: a fresh ed25519 key and a chain attenuated to exactly those rights with their scopes, 8 h. The grant
-   reaches the page in the URL fragment and stays in memory.
-3. Every panel client signs its Hello with that key. The call runs the chain stages of
-   `repo:rust-stack/docs/CAPABILITY-CHAIN.md`: auth, cap, limit, route, call, ledger. Stage 2 refuses an op the
-   chain lacks; inside the op, the view cell filters rows and fields by the chain's scopes (`covers`/`check_scope`,
-   the same functions `audit-log-api` uses).
-4. A view cell reads its sources with its own narrow read grants, and returns only what the caller's chain covers.
-   It holds no write rights, so it cannot be used as a deputy for a change.
-
-Two viewers, same URL, same bundle:
-
-| | Leif (root person) | Operator (narrow) |
-|---|---|---|
-| Chain | all `cr.*` rights, `cr.approvals:sign` | `cr.devices:read node=ops-1`, `cr.cells:read node=ops-1`, `cr.audit:read app=orch`, `cr.traces:read api=orch` |
-| Shell | seven panels | Devices, Cells, Audit, Traces |
-| Devices | every node and phone | ops-1 only, `narrowed = true` |
-| Keys, Renewals, Approvals | full | not mounted; a direct call answers `Refused{needs}` |
-| A refused panel shows | | what is missing and a button that files the request into Leif's approvals inbox |
-
-Acceptance test `tests/two_viewers.rs` signs both in against in-process cells and asserts the row sets, then calls
-every op of every cell with the operator chain and asserts each answer is either scoped or refused.
-
-## 8. UI cells, codegen, bundling
-
-**A UI cell** is a TypeScript package in its panel's repo:
+(Header and op punctuation are whatever `ce-wire` parses at the pinned rev; the content is as written.)
+`KeyRow` has no field that can carry a value: the type is the guarantee. `cr.keys` holds `keys:list`, `keys:meta`,
+`keys:audit` on `keys` and its test asserts the grant has no `keys:read`. The view has no renew op: it emits
+`renew(KeyName)`, the shell passes it to the approvals slot as a typed prop, and the change travels section 7.
 
 ```ts
-// cr-keys/ui/panel.ts
-import { CrKeysClient, type KeyRow } from '../sdk/ts-web/CrKeys';      // generated, never edited
-export const KeysPanel = definePanel<{ dueWithinDays?: number; onOpen?: (k: KeyRow) => void }, CrKeysClient>({
-  api: CrKeysClient,                       // the shell connects it with the session grant
-  rights: ['cr.keys:read'],                // must equal the rights of the ops used; checked at build
-  view: (props, cell) => /* components from the shared kit; live(cell.List(...)) re-renders on change */,
-});
+// repo:cr-keys/ui/src/KeyList.ts      imports only ui/gen and ui-kit
+import { KeyList } from "../gen/cr_keys";
+export default KeyList.render(({ data, emit }) =>
+  table({}, each(data.rows, k => k.name, k =>
+    row({ onclick: () => emit.opened(k.name) }, k.name, k.service, expiry(k.expires_at), rotation(k.rotation),
+        show(k.holders, hs => holders(hs)),                        // absent on the wire for a narrow viewer
+        button({ onclick: () => emit.renew(k.name) }, "Renew")))));
 ```
 
-Panels compose like components: typed props in, typed events out, and a panel can mount another panel. The Renewals
-panel mounts `<KeysPanel dueWithinDays={30} onOpen={...}/>`; clicking an audit row's `call_id` opens
-`<TracesPanel tree={callId}/>`; clicking a span's chain opens `<AuditPanel chainId={...}/>`. Cross-panel links are
-typed `Ref<Kind>` values routed by the shell, so a link to a kind no mounted panel handles does not compile.
-Every panel renders the five states of the cell contract: loading, empty in one sentence, refused with the ask
-button, no answer, signed out.
+### The other contracts
 
-**Type safety, end to end.** Rust struct in `api!` -> `ce-wire-gen --lang ts-web` -> client and types -> panel props.
-`tsc` with `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`; lint forbids `any`, `as` casts and
-`fetch`/`WebSocket` outside the generated client. Rust enums arrive as discriminated unions and every `switch`
-is exhaustive (`never` check), so a new `RotationState` breaks the build until the panel draws it. `Result<T, E>`
-arrives as a typed result, not an exception. Rust: `#![forbid(unsafe_code)]`, clippy deny warnings, no `serde_json::Value`
-in a contract.
+| Cell | Row types (`Part` fields named) | Ops (right) | View: props, events, slots |
+|---|---|---|---|
+| `cr.cells@1` | `CellRow{api, major, serves, placement, instances[{node, state, since_ms, healthy, leader}], wanted, live, drift, protected, build: Part<Sha256, "cr.cells:builds">}` | `List`, `Watch`, `Sources` (`cr.cells:read`); `Logs` stream (`cr.cells:logs`); `Plan(CellChange) -> Planned{plan: Sha256, steps, refuses}` (`cr.cells:plan`) | `CellBoard`: `{node?, unhealthy_only?}`; `opened(CellName)`, `change(CellChange)` |
+| `cr.devices@2` | `DeviceRow{id, name, kind: Server \| Desktop \| Laptop \| Phone \| Tablet, online, last_seen_s, disk[{mount, used_pct, free_gb}], load, doctor{ok, failing[], at}, cells, tailscale: Part<Tailnet{ip, online, key_expires_at}, "cr.devices:net">, passkeys: Part<Vec<PasskeyRef>, "cr.devices:passkeys">}` | `List`, `Watch`, `Sources` (`cr.devices:read`); `Doctor(id) -> DoctorReport`, asked of that node's `node.doctor` now (`cr.devices:doctor`) | `DeviceList`: `{kind?}`; `opened(NodeName)` |
+| `cr.audit@2` | `AuditRow{seq, at_ms, node, actor, app, op, target, ok, kind: Call \| Grant \| Revoke \| Approval \| KeyEvent, call_id, chain_id, prev_hash, hash, detail: Part<String, "cr.audit:detail">}` | `Search(AuditQuery)`, `Watch`, `Sources` (`cr.audit:read`); `Chain(node) -> ChainState{head_seq, anchored_seq, first_bad}` (`cr.audit:verify`); `Receipt(RowId) -> Receipt{row, proof, head_sig}` (`cr.audit:read`); `Export` stream (`cr.audit:export`) | `AuditTrail`: `{q?, chain?, call?}`; `trace(CallId)`, `chain(ChainId)` |
+| `cr.traces@1` | `TraceRow{call_id, root_api, root_op, started_ms, ms, outcome, nodes, cells}`, `SpanRow{call_id, parent, api, op, node, start_ms, ms, outcome, audit_seq, chain: Part<ChainHop{chain_id, depth, right_used}, "cr.traces:chains">}` | `Recent(TraceQuery)`, `Watch`, `Tree(CallId)`, `ByChain(ChainId)`, `Summary`, `Sources` (`cr.traces:read`) | `TraceList`: `{tree?, chain?}`; `audit(CallId)`, `chain(ChainId)` |
+| `cr.renewals@1` | `RenewalRow{what: Key \| Share \| StoreGrant \| AccessGrant \| Cert \| TailscaleKey \| Passkey, name, holder, expires_at, mode: SelfRenewing{next_run_at, last} \| NeedsLeif{why, propose: Change}}` | `List`, `Watch`, `Runs`, `Sources` (`cr.renewals:read`) | `Renewals`: `{within_days?}`; `approve(Vec<Change>)`; slot `keys: cell:cr.keys@2 optional` |
+| `cr.approvals@1` | `InboxRow{id, kind: Bundle \| RootChange \| Message \| Need, title, items[{n, change: Change, owner, effect, state}], until, card: Ref}` | `List`, `Watch` (`cr.approvals:read`); `Propose(Vec<Change>) -> InboxRow`, `Cancel(id)` (`cr.approvals:propose`) | `Inbox`: `{draft?: Vec<Change>}`; `done(BundleId)` |
+| `cr.shell@2` | `Layout{title, tabs[{slot, label}]}`: only slots the manifest kept | `Layout(route)` (`cr.shell:open`) | `ControlRoom`: the eight slots of section 3, all optional |
 
-**Codegen gates** (per panel repo, CI): `ce-wire-gen --lang ts-web` and `--lang json` regenerate `sdk/` and `wire/`
-and fail on drift; `ce-wire-gen check --base origin/main` fails a breaking change; the `rights` list of each panel
-is compared with the `needs` of the ops it imports; source cells are bound with
-`use_cell!("keys" => "<pinned contract ref>")` so a source contract change is a compile error in the view cell.
+`Change` is declared once, in `cr-approvals-api`: `KeyRenew{name} | KeyRotate{name} | KeySeal{name} |
+ShareSend{key, to} | StoreGrantRenew{node, label} | Grant{to, rights, caveats, not_after} | Revoke{grant} |
+Cell(CellChange)`, with `CellChange` from `cr-cells-api`: `Start{api, node} | Stop{api, node} | Restart{api, node}
+| Move{api, from, to} | Deploy{api, node, build}`. Both enums are `open`.
 
-**Bundling.** Each UI cell builds to one content-hashed ES module (`keys.<hash>.js`) plus the shared kit and tokens
-as their own chunks; no panel bundles another panel. The shell is a small module that, from `Session().panels`,
-imports only the modules of the panels this viewer has: an operator's browser never downloads the Keys panel code.
-Each module is published to `artifact.index` with its build statement and resolved by hash; the page pins hashes
-with subresource integrity. One strict CSP: scripts from self by hash, connect only to `/wire`. The same panel
-modules load in the desktop window through a `[[face]]` entry in `multicell-native` (`serve = "origin"`).
+Composition is typed like props in React, checked by `tsc` from the imported contracts: the shell routes
+`AuditTrail.trace(CallId)` into `TraceList{tree}`, `TraceList.chain(ChainId)` into `AuditTrail{chain}`,
+`KeyList.renew` and `Renewals.approve` into `Inbox{draft}`. Renewals places `KeyList{due_within_days: 30}` in its
+own slot. A slot whose cell the viewer may not have is empty, and the parent can observe only that.
 
-**Look.** The ce design standard, light theme by default, dark by preference; shared components and tokens, no
-per-panel CSS framework. Dense tables, one accent, expiry shown as a date and as days left, state always as text plus
-colour. Works at phone width because approvals are signed on the phone.
+`cr.audit` fans out to `audit.log` on every node and adds `keys Audit` and `cap.ledger` rows as the same type.
+The view recomputes `hash` from `prev_hash` and the row for the rows on screen, so a broken link shows in the
+browser and not only in the server's report; `Receipt` verifies offline with `repo:ce-net-capability-verify`.
+`cr.cells Plan` is a dry run. `Move` is always up on the target, healthy and caught up, then down on the source.
+Protected cells (`state.store`, `keys`, the door, `root.approve`, `feed.approve`, `grant.bundle`, the last
+gateway) refuse `Stop` and `Move` in `Plan` with the reason: a node's `state.store` is never stopped, because its
+gate reads it.
 
-## 9. Deployment
+## 5. Rights: from the grant to the pixel
 
-| Cell | Runs on | Replicas | State | Notes |
-|---|---|---|---|---|
-| `cr.shell` | ops-1, leif-desk | 2, active-active | `cr.prefs` | next to `account.signin` and `wire.ws-door` |
-| `cr.keys` | ops-1, debian when back | 2 | none | on the nodes that run `keys`, so metadata reads stay local |
-| `cr.cells` | ops-1, leif-desk | 2 | none | talks to `orch` on every node |
-| `cr.devices` | ops-1, leif-desk | 2 | none | |
-| `cr.audit` | ops-1, leif-desk | 2 | none | fans out to each node's `audit.log` |
-| `cr.traces` | ops-1 | 1, restart on leif-desk | none | next to `ui.trace` |
-| `cr.renewals` | ops-1, leif-desk | 2 | none | |
-| `cr.approvals` | ops-1, leif-desk | 2, leader by `ce-replica` | `cr.bundle*` | one leader performs a bundle; items are idempotent through `cr.spent` |
-| UI modules | `artifact.index`, served on `apps.ce-net.com/control-room` | every door node | static | |
+Policy is declared once, in `cap!` / CAL in `repo:control-room/crates/control-room-policy`. It generates the
+grants, the `person.grant` table and the rights column of this document.
 
-Each cell has a `cell.toml` (`api`, `depends_on`, `[launch] health`, `[placement] nodes`), is built once by
-`cell.build`, pinned in `artifact.index`, and started by `orch` `Up`; callers find a replica with `by_name`. The
-Mac and phones run no control-room cell: they are viewers and signers. Control room shows itself: its eight cells
-are rows in the Cells panel, its calls are in Audit and Traces. If ops-1 is down, leif-desk serves everything but
-`cr.traces` until it restarts there, and each panel names the source that is missing.
+| Role | Holds | Row caveats |
+|---|---|---|
+| `root` (`person:leif`) | every `cr.*` right, `ui.manifest:inspect`, `cap.explain:read` | none |
+| `operator` (a named person, until a date) | `cr.shell:open`, `cr.devices:read`, `cr.cells:read`, `cr.audit:read`, `cr.traces:read` | `node == "ops-1"`, `app == "orch"`, `api == "orch"` |
+| visitor (the public table) | nothing of control room | the route answers the sign-in page |
 
-## 10. Slice 1 (a few hours): read-only control room with two viewers, live
+The four server checks of FS 4.2, one declaration each:
 
-Goal: Leif opens the URL, signs in with his passkey, and sees his keys with expiry, his devices and the audit trail;
-a second sign-in with a narrow chain sees less; proof by screenshot of both.
+| Level | Declared | Checked by | A viewer without it |
+|---|---|---|---|
+| cell | `view .. needs` | `ui.manifest`, `ui.serve` | no manifest entry, no bundle, slot empty |
+| op | `ops .. needs` | `ce-gate` at the backend's door | `Refused{need}` |
+| field | `Part<T, R>` | generated serialiser | field absent on the wire |
+| row | `#[record(caveat = [node, service, owner, app, api])]`, CAL caveat in the chain | `layer-view`: the caveat becomes the `state.store` query and filters `Watch` deltas | row never read |
 
-1. `cr.shell` + shell UI: `Session`, grant mint through `wire.ws-door`, lazy panel mount, light theme, five states.
-2. `cr.keys` + Keys panel: `List`, `One` from `keys` `List`/`Meta`; `RotationState` and days left; holders gated by
-   `cr.keys:holders`. Test: grant has no `keys:read`; `KeyRow` JSON of a seeded store contains no value bytes.
-3. `cr.devices` + Devices panel: `List`, `One` from `fleet.inventory` (online, age, disk, tailscale, doctor
-   summary); offline nodes stay listed.
-4. `cr.audit` + Audit panel: `Search` over `audit.log` on ops-1 and leif-desk, `Chain` from `Verify`, hash link
-   re-checked in the browser, search by actor, app, op, target.
-5. Shared: `cr-view` crate (`View<T>`, `SourceState`, `CrError`, scope filter), `definePanel` and the kit import,
-   codegen and drift gates in CI.
-6. `tests/two_viewers.rs` and a second `ce-iam` role `control-room.operator`.
-7. Deploy: build with `cell.build`, `orch` `Up` on ops-1 and leif-desk, face entry and route on `apps.ce-net.com`.
-8. Proof: screenshots as Leif and as operator, phone width included, and the test output.
+Two viewers, one URL:
 
-Not in slice 1: any write. The Keys panel shows "Renew" disabled with "arrives with approvals".
+| | Leif | Operator |
+|---|---|---|
+| Manifest | `cr.shell` and eight slot cells | `cr.shell`, `cr.devices`, `cr.cells`, `cr.audit`, `cr.traces` |
+| Bytes received | all bundles | no byte naming keys, renewals or approvals; `ui.serve Fetch` of their hashes answers `Refused` |
+| Devices | every node and phone, tailscale, passkeys | ops-1 only, no `tailscale`, no `passkeys` field |
+| Audit | everything, with `detail` | rows of `orch`, no `detail` field |
+| Direct call of `CrKeys::List` | rows | `Refused` |
+| Right ends (`cap.revoke`) | | stream closes with `Revoked`, the panel leaves the open page |
 
-## 11. Later slices
+A right is asked with `cap.request`, shows in `needs.list`, is approved in the inbox (section 7), minted by
+`cap.mint`, recorded in `access.grant` and `cap.ledger`. No control-room cell mints a right. A backend narrows
+the chain it was handed before it calls a source (`narrow`), so it can do no more for a viewer than the viewer
+may do. Why something is absent is answered by `cap.explain Why` in the `cap.inspect` slot (Leif only), with
+`as:` to look at the page as the operator. `ui-host` gives a view no way to read the viewer's rights, and
+`decl.lint` refuses a role compare, a `display:none` driven by a right, or a call outside `ui/gen` in `ui/src`.
+Until `layer-auth` puts cap v3 into `ce-gate`, the caveat check is the shared crate `ui-chain`.
+
+## 6. Records
+
+| Record (`cell`, `collection`, version) | Owner | Kind | Notes |
+|---|---|---|---|
+| `cr.keys/key_row@1`, `cr.keys/share_row@1` | `cr.keys` | projection | the contract's row types themselves derive `Record`; no second declaration |
+| `cr.cells/cell_row@1`, `cr.devices/device_row@1`, `cr.audit/audit_row@1`, `cr.traces/trace_row@1`, `span_row@1`, `cr.renewals/renewal_row@1` | each cell | projection | rebuilt from sources; `Part` fields stored whole, withheld per caller by the serialiser |
+| `cr.approvals/run@1` `{bundle, n, state, receipt_seq, at_ms}` | `cr.approvals` | single writer | behind the `ce-replica` leader lease, never merged |
+| `<owner>/spent@1` `{bundle, n, at_ms}` | the performing cell (`keys`, `orch`, ..) | single writer | an approved item runs once |
+| `control-room.ui-state` `{layout, theme, filters}` | `control-room.ui-state` (the `<app>.ui-state` pattern) | `per_person` | theme `light` by default |
+
+Bundles themselves live in `grant.bundle`. No record holds a secret, a token or a grant body: a grant is referred
+to by its chain id. Projection rows merge by HLC (default merge); a record change follows FS 6.2 (`#[migrate]`,
+`schema.migrate` in five phases) and is never an edit in place.
+
+## 7. Approvals: one popup, and who actually performs
+
+1. A panel emits `Change`s ("approve all 6 due"). `cr.approvals Propose` turns each into one `grant.bundle` item:
+   the owner cell, the exact scope (`keys:renew` where `name == "<key>"`), an end at most ten minutes out, and a
+   plain-words line taken from the owner's dry run. Kinds map to what exists: `Seal` for a secret Leif pastes
+   (the value goes from the card straight into `keys` and never reaches control room), `RootKey` for root and
+   device-key changes (redeemed by `root.approve`), `CapRequest` and `IamGrant` for rights.
+2. The inbox view shows every item with its effect and links to the one card, `apps.ce-net.com/grant?b=<id>`,
+   served by `feed.approve`: a tick per item, one passkey signature (P-256) over the item texts.
+3. `cr.approvals` watches the bundle. For each approved item, under its leader lease, it calls the owner:
+   `keys Renew{name, mode, item: {bundle, n}}`, `orch Apply{change, item}`, `state.grant-renew Renew`, `cap.mint`.
+4. The owner trusts nothing about `cr.approvals`. It calls `grant.bundle Verify{bundle, n}` itself (the WebAuthn
+   signature is re-checked by `approval.check` on every call), compares the signed text with the change it was
+   asked to do, checks the end and its own `spent` record, performs, writes `spent`, and its ledger stage writes
+   the audit row with the bundle id.
+5. `Watch` streams item states to the inbox: `Waiting`, `Approved`, `Running`, `Done{receipt}`, `Failed{why}`. A
+   failed item does not undo the others; it returns as a new proposal.
+
+The rights `cr.approvals` holds on owners (`keys:renew`, `orch:apply`) carry the caveat `require
+approved(grant.bundle item)`, the same construction as FS 4.1's `deploy.ship:apply .. require cosign`. So a stolen
+session, a compromised `cr.approvals` or a changed bundle cannot renew, stop or grant anything.
+
+Added ops in existing cells, all additive within their major:
+
+| Cell | Op | Right |
+|---|---|---|
+| `keys` | `Renew(RenewReq{name, mode: Renew \| Rotate, item}) -> Result<KeyInfo, KeysError>`: runs the code the autopilot runs for that key, seals the new version, answers metadata | `keys:renew` |
+| `keys` | `Autopilot(()) -> AutopilotState{rules, last_runs, needs_you}`: the autopilot's state as a typed answer | `keys:list` |
+| `orch` | `Apply(ApplyReq{change, item}) -> Result<Done, OrchError>`: the approved form of `Up`/`Down`/`Restart`; `orch:manage` is not given to control room | `orch:apply` |
+
+When `deploy.ship Plan/Apply` exists, `Deploy` and `Move` become a plan hash, and the signed item names that hash.
+
+## 8. Codegen and type safety
+
+`ce-wire-gen --lang ts-ui` writes `ui/gen/` per cell (types, client, `defineView` binding) and is never edited;
+`--lang json` writes the descriptor; the same contracts become MCP tools at the site's MCP door for whatever the
+caller's chain may call. `tsc --noEmit --strict`, no `any`, no `as`. Rust: `#![forbid(unsafe_code)]`, clippy with
+warnings denied, no `serde_json::Value` in a contract. Each row below is a `break-proof` test:
+
+| Change | Fails in |
+|---|---|
+| rename `KeyRow.rotation` | `tsc` of `repo:cr-keys/ui/src/KeyList.ts` |
+| read `k.holders` without `show`/`match` | `tsc` (`Part<T>` has no direct value) |
+| add a `RotationState` variant and not draw it | `tsc` (exhaustive `match`, `never`) |
+| shell passes a `CallId` where `TraceList` wants a `ChainId`, or fills `keys` with another cell | `tsc` of `repo:control-room/ui/src/ControlRoom.ts` |
+| view `KeyList` needs less than `Watch` needs | `ce-wire-gen` |
+| a `cr.*` right no role in the policy holds | `cargo build` of the site crate (`cell-cap`) |
+| contract changed without a major or a frozen `versions/v<N>.rs` | `contract.check` in `cell.build` |
+| `Health` declared in two contracts, a second `tokens.css`, a right string outside a contract | `decl.lint` |
+| a source contract (`keys@1`) changes under a pinned hash in `cell.lock` | `cargo build` of the view cell |
+
+## 9. Bundles and runtime
+
+- `ui.bundle` (`cell.build` target `ui-web`): codegen, `tsc`, esbuild to one ES module per view, `artifact.index
+  Publish`. Eight view bundles; `ui-rt`, `ui-kit` and `cr-types` are external and published once. Budget: a view
+  at most 30 kB gzip, `ui-rt` at most 6 kB.
+- A bundle's name is its sha256 (`/_c/<sha256>.js`, immutable). Every control-room view has `needs`, so `ui.serve`
+  gives a bundle only to a chain that holds the view's right and none is cached at the public edge.
+- The manifest is signed by the gateway's node key and carries `integrity` per module; the import map repeats the
+  hashes; CSP is `script-src 'self'`, no inline, no eval. `ui-host` refuses a module whose digest differs and
+  reports it to `audit.log`.
+- One socket to `wire.ws-door` for the page. Each view calls only its own backend over it with the same chain.
+  `data { rows: Watch(q) }` is one subscription: a snapshot at an HLC, then `Delta{put, del, hlc}`, filtered per
+  row and per `Part` on the server, applied once per animation frame, resumed from the last HLC after a
+  reconnect, paused off screen.
+- A panel fails alone: its backend down or refusing shows that panel's own error state with its `Sources`; the
+  shell and the siblings keep running. `ui.manifest Watch` mounts a panel when a grant lands and unmounts it on a
+  revoke, without reload.
+- Look: `repo:ui-kit` (one `tokens.css`, one component set), light theme by default, dark by preference. Dense
+  tables, one accent, expiry as a date and as days left, state as text plus colour. Works at phone width,
+  because approvals are signed on the phone. Desktop and phone native faces take the same contracts through
+  `ce-wire-gen --lang rust-ui` later.
+
+## 10. Versions
+
+- Identity is `cell:<api>@<major>`. Within a major only additive change. `cr.keys`, `cr.devices`, `cr.audit` and
+  `cr.shell` go to major 2 now: `ce-wire-gen freeze` keeps `versions/v1.rs`, `adapt` writes the adapter, each
+  backend serves 1 and 2 while the first edition's face is still up. Major 1 is retired by its own `Retire` plan
+  change after that face is gone and `Callers` has been zero for 14 days.
+- Hello carries the schema hash and `serves: [major]`; the generated client picks the highest major in both
+  `speaks` and `serves`. `ui.manifest` picks, per cell, the newest bundle whose `speaks` meets what the replicas
+  taking traffic serve. No intersection is a plan error and cannot reach a page.
+- Rollout order (FS 6.4): backends first, one replica at a time, followers before the leader; bundles second, to
+  1, 10, 50, 100 percent of new page loads; open pages keep their bundle and still have a backend.
+- Source cells are pinned in each view cell's `cell.lock` (`cell:keys@1` plus contract hash). `contract.check
+  Mesh` names every control-room cell a source change would break before that change can deploy.
+
+## 11. Deployment
+
+Placement is declared in `net!` beside `site!`; this table is its content.
+
+| Cell | Runs on | Replicas | Notes |
+|---|---|---|---|
+| `site.gateway`, `ui.manifest`, `ui.serve` | ops-1, leif-desk | 2, active-active | the edge; beside `account.session`, `person.grant`, `wire.ws-door` |
+| `cr.shell` | ops-1, leif-desk | 2, active-active | stateless |
+| `cr.keys` | ops-1; debian when it is back | 1, then 2 | on the nodes that run `keys`, so metadata reads stay local |
+| `cr.cells`, `cr.devices`, `cr.audit`, `cr.renewals` | ops-1, leif-desk | 2, active-active | each fans out to its sources on every node; projection in the node's `state.store` |
+| `cr.traces` | ops-1 | 1, restarts on leif-desk | next to `ui.trace` |
+| `cr.approvals` | ops-1, leif-desk | 2, leader by `ce-replica` | one leader runs an approved item; `spent` makes a repeat harmless |
+| `control-room.ui-state` | ops-1, leif-desk | 2 | per-person rows |
+| bundles | `artifact.index`, served by `ui.serve` | every edge node | by hash |
+
+The Mac, debian while it is offline, and the phones run no control-room cell. The Mac is read only through its
+own typed cells and `fleet.inventory`; a node that does not answer stays listed as offline with its last row and
+age. Phones are viewers and signers and appear as devices because they hold an approval key. Control room shows
+itself: its cells are rows in Cells, its calls are in Audit and Traces. With ops-1 down, leif-desk serves
+everything but Keys and Traces, and each of those panels names the source that is missing.
+
+```
+ce site plan  ce-net.com --only cr.shell cr.keys cr.devices cr.audit   # every change, the op, the right it needs
+ce site apply ce-net.com --plan <sha256>     # asks for ApprovedSigned when a change needs it, streams events
+ce site back  ce-net.com                     # previous converged state
+```
+
+`Plan` runs `decl.lint`, `contract.check Mesh`, the negotiation check and the placement checks before it lists a
+change; an empty plan after `Apply` is the definition of converged. Until `deploy.ship Plan/Apply` over `net!`
+exists (FS slice 3), the same changes are made by the typed ops a plan would list, in this order: `cell.build`,
+`artifact.index Publish`, `cell.install`, `orch Up`, then `deploy.version` switches the route. No host shell
+anywhere in the path.
+
+Dev: `cargo cell dev cr.shell cr.keys cr.devices --as operator` beside `--as root` shows the same page under two
+chains on a `sim-mesh`; `#[cell_test(sim, as = [operator, root])]` runs one test body per role.
+
+## 12. What happens to the first edition's code
+
+`repo:control-room@e0f4a75` and the repos `cr-keys`, `cr-devices`, `cr-audit`, `cr-sources` were built on the
+first edition and are installed on ops-1. Nothing is thrown away; each piece moves to its fixed place.
+
+| Exists | Becomes |
+|---|---|
+| `crates/cr-keys-api`, `cr-devices-api`, `cr-audit-api` in `repo:control-room` | move into their cells' repos; gain the `ui { }` block and `Part` fields as major 2; v1 frozen |
+| `Health`, `SourceState`, `Source`, `CrError` repeated in each contract | declared once in `cr-types-api`; `CrError::Refused` is the gate's `Refused{need}` |
+| envelope `KeysView{rows, narrowed, ..}` | rows as `List` and `Watch`; `sources` is its own op; `narrowed` and `can_ask` are removed (a view is not told what it lacks; `cap.explain` answers) |
+| `cr-view` (`scopes`, `holds`, scope abilities `cr.devices:scope:node=..`) | the row filter of `layer-view` and the chain reader of `ui-chain`; the scope-ability form is read as the v1 spelling of a caveat until cap v3 is in `ce-gate` |
+| `cr.shell Session{panels}` and `ui/dist/panels.json` | `ui.manifest Resolve`; the shell keeps only `Layout` |
+| `cr-shell/src/web.rs` (page, hashed modules, `/wire`) | the minimum of `site.gateway` and `ui.serve` |
+| `ui/kit` (`definePanel`, `dom.ts`, `tokens.css`, fonts) | `defineView` in `ui-rt`/`ui-host`; tokens and components become the first content of `repo:ui-kit` |
+| `ui/panels/<p>/panel.ts` | `ui/src/<View>.ts` in each cell's repo, against `ui/gen` |
+| `ui/tools/lint.mjs` | the `ui/src` rules of `decl.lint` |
+| `roles/*.json` | generated from `control-room-policy` |
+| `repo:cr-sources` (source contracts copied, hashes pinned) | `cell.lock` pins on the sources' own `-api` crates; its `ui.trace` span helper stays |
+
+## 13. Slice 1 (a few hours): read-only, two viewers, live at `ce-net.com/x/control`
+
+Goal: Leif signs in with his passkey and sees his keys with expiry and holders, every device, and the audit trail,
+live. The operator role opens the same URL and receives less, proved on the wire.
+
+Build, in order:
+
+1. Shared, the FS slice 1 subset, taken if another lane has landed it and otherwise built at the minimum in its
+   own repo: `ui { }` in `ce-wire`; `ce-wire-gen --lang ts-ui`; `ui-part`; `ui-rt` and `ui-host` (mount, slot,
+   signal, one socket), lifted from `ui/kit`; `ui.manifest` (`Resolve` only), lifted from `Session{panels}`;
+   `ui.serve`; the minimum of `site.gateway`, lifted from `cr-shell/src/web.rs`; `ui-chain` and the equality and
+   set caveats of `layer-view`, lifted from `cr-view`.
+2. `cr-types-api`; `control-room-policy` with `root` and `operator`; the site crate of section 3 with the four
+   slice 1 slots.
+3. `cr.shell@2`: `Layout`, view `ControlRoom` with optional slots, light theme.
+4. `cr.keys@2`: contract of section 4, `List`/`Watch`/`Sources` from `keys List`/`Meta`, projection `key_row`,
+   view `KeyList`. "Renew" is drawn disabled with "arrives with approvals".
+5. `cr.devices@2`: `List`/`Watch`/`Sources` from `fleet.inventory`, `Part` fields `tailscale` and `passkeys`,
+   offline nodes kept, view `DeviceList`.
+6. `cr.audit@2`: `Search`/`Watch`/`Chain` over `audit.log` on ops-1 and leif-desk, hash link rechecked in the
+   view, `Part` field `detail`, view `AuditTrail`. Last, and cut first if time runs out.
+7. v1 of the three contracts frozen and still served.
+8. Deploy by typed ops (section 11) to ops-1 and leif-desk; the Pages Function forwards `/x/*`.
+
+Proof, as `#[cell_test(sim, as = [operator, root])]` and again live, with screenshots at desktop and phone width:
+
+1. Root: the manifest has four cells; keys show expiry, rotation state and holders; a device going offline
+   changes its row without reload.
+2. Operator: the manifest has `cr.shell`, `cr.devices`, `cr.audit`; devices shows ops-1 only.
+3. Not sent: every byte the operator's browser received (HTML, manifest, modules, frames) is searched for
+   `cr.keys`, its bundle hash and every key name: none. `ui.serve Fetch` of that hash and `CrKeys::List` with the
+   operator chain both answer `Refused`.
+4. Field level: the operator's device rows have no `tailscale` field on the wire; a root chain without
+   `cr.keys:holders` gets key rows with no `holders`.
+5. No secret: the JSON of every `KeyRow` from a seeded store contains no value bytes; `cr.keys`'s grant has no
+   `keys:read`.
+6. Revoke: `cap.revoke` on the operator grant with the page open; the streams close and the panels leave.
+7. Types: `break-proof` renames `KeyRow.rotation`; the build fails in `ui/src/KeyList.ts`.
+8. Integrity: one byte of a bundle changed on disk; `ui-host` refuses it.
+
+Not in slice 1: any write, prerender, `decl.lint`, `contract.check`, `deploy.ship Plan/Apply`, `cap.inspect`.
+
+## 14. Later slices
 
 | Slice | Adds |
 |---|---|
-| 2 | `approval-proof` crate, `cr.approvals` + panel, `keys` `Renew` and `Autopilot` ops, renew and rotate one key from the phone; `cr.renewals` + panel with "approve all due" |
-| 3 | `cr.cells` + panel, `orch` `Apply`, start/stop/restart/move with plan preview and protected cells |
-| 4 | `cr.traces` + panel, chain id join, audit-trace-chain cross links, `ByChain` |
-| 5 | Phones and passkeys in Devices, grant and revoke from the inbox, access requests from a refused panel, export, desktop face |
+| 2 | `cr.approvals` and `cr.renewals` with their views; `keys Renew` and `Autopilot`; renew and rotate one key from the phone through one bundle; "approve all due" |
+| 3 | `cr.cells` and its view; `orch Apply`; start, stop, restart and move with the plan shown first and protected cells refused |
+| 4 | `cr.traces` and its view; chain id on spans; audit, trace and chain open from each other; `ByChain` |
+| 5 | `decl.lint`, `contract.check`, `Retire` of major 1, `ce site plan/apply`, `cap.inspect` slot, the 301 from the old face |
+| 6 | phones and passkeys in Devices, grant and revoke from the inbox, export, native faces through `rust-ui`, the route moves to `ce-net.com/control` inside `repo:ce-net-site` |
 
-## 12. Open points to settle while building
+## 15. Open points
 
-1. Re-read this against `repo:ce/docs/FULLSTACK-CELLS.md` when it exists: the name and shape of the panel
-   definition (`definePanel` here), where a UI cell lives relative to its backend, and how a UI cell is registered.
-   The contracts, rights and approval flow do not depend on it.
-2. `ui.trace` `Span` has no chain id field today. Slice 4 either joins through the audit row by `call_id` (no
-   contract change, needs the ledger stage to record `call_id` and chain id on every cell) or adds
-   `chain_id: Option<String>` to `Span` (additive).
-3. `root.approve` signs one request per signature. The bundle in section 6 keeps its device enrolment and key
-   format and adds a bundle-level `to_sign`; decide whether that lives in `cr.approvals` or becomes
-   `root.approve` `ProposeBundle`.
-4. Which `fleet.inventory` `Node` sections carry tailscale and doctor on each node; missing ones are added in the
-   node's inventory writer, not scraped by control room.
-5. `debian` is offline now: `cr.keys` runs on ops-1 alone until it returns; the Devices panel shows it as offline.
+1. The session cookie is set on apps.ce-net.com and the gateway answers on ce-net.com: either the cookie's domain
+   becomes `ce-net.com` or the gateway receives the person from `account.signin` by redirect. Decided with the
+   owner of `account.session`, before slice 1 goes live.
+2. `grant.bundle` items are grants. A one-shot change is written here as a grant of one narrowed right that ends
+   in ten minutes; whether `grant.bundle` should gain an explicit `Change` kind is its owner's call.
+3. Whether a contract row type can derive `Record` directly (section 6) depends on `ce-db-derive` accepting
+   `Part` fields; if not, the record is generated from the contract type, still one declaration.
+4. `ui.trace Span` has no chain id today: slice 4 adds `chain_id: Option<..>` (additive) or joins through the
+   audit row by `call_id`.
+5. `state.store Watch` under a per-row chain filter with resume by HLC is not measured (FS section 13).
+6. Which `fleet.inventory Node` sections carry tailscale and doctor on each node; a missing one is added in that
+   node's inventory writer, never scraped by control room.
+7. debian is offline: `cr.keys` runs on ops-1 alone until it returns, and Devices shows it as offline.
