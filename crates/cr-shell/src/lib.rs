@@ -25,8 +25,18 @@ pub fn site_dir() -> Result<std::path::PathBuf, String> {
             return Ok(d.into());
         }
     }
-    let index = site_files::SITE.iter().find(|(n, _)| *n == "bundles.json").map(|(_, b)| *b).ok_or("this build carries no site (ui/dist was empty)")?;
-    let tag: String = index.iter().fold(0xcbf29ce484222325u64, |h, b| (h ^ *b as u64).wrapping_mul(0x100000001b3)).to_le_bytes().iter().map(|b| format!("{b:02x}")).collect();
+    if site_files::SITE.is_empty() {
+        return Err("this build carries no site (ui/dist was empty)".into());
+    }
+    // the tag covers every file's name and bytes, so a new page or style is a new folder, never a stale one
+    let tag: String = site_files::SITE
+        .iter()
+        .flat_map(|(n, b)| n.as_bytes().iter().chain(b.iter()))
+        .fold(0xcbf29ce484222325u64, |h, b| (h ^ *b as u64).wrapping_mul(0x100000001b3))
+        .to_le_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     let dir = std::path::PathBuf::from(format!("{}/.local/share/cr-shell/site/{tag}", std::env::var("HOME").unwrap_or_default()));
     if !dir.join("index.html").exists() {
         for (name, bytes) in site_files::SITE {
