@@ -1,151 +1,77 @@
-//! The one function of `cr.shell`: a signed-in person gets a browser grant attenuated to their control-room role, and
-//! the page learns from `Session` which panels that grant can use.
+//! The one function of `cr.shell`: the control room's layout for a viewer, and (in `main`) the site's gateway face.
 //!
-//! Who gets which role is `people.json` (`{"<person>": "<role>"}`); what a role may do is its ce-iam policy file
-//! (`roles/<role>.json`, `ce-iam-policy-v1`, the same files `ce-iam role put` takes). A person with no role gets no
-//! grant. The grant also carries `cr.shell:person=`, `cr.shell:role=` and `cr.shell:until=` abilities, signed into the
-//! chain by this node, so `Session` reads them from the verified leaf and never from the page.
+//! `Layout` names who the grant is for (person, role, end: abilities this node signed into the chain at sign-in,
+//! read from the verified leaf) and the tabs of the slots the chain may open, in the site's order. A slot whose view
+//! the chain may not have is not named, so a narrower viewer never learns it exists. Major 1's `Session` is in [`v1`].
 #![forbid(unsafe_code)]
 
 pub mod door_api;
-pub mod web;
+pub mod v1;
 
 use cr_shell_api::*;
-use std::collections::BTreeMap;
-use std::path::Path;
 
-/// Grants last 8 hours; the page signs in again after that.
-pub const TTL_S: u32 = 8 * 3600;
+pub const TITLE: &str = "Control room";
 
-/// Every panel of slice 1: name, its backend cell, and the right its ops need.
-pub const PANELS: &[(&str, &str, &str)] = &[
-    ("keys", "cr.keys", "cr.keys:read"),
-    ("devices", "cr.devices", "cr.devices:read"),
-    ("audit", "cr.audit", "cr.audit:read"),
-];
-
-/// Rights a panel uses beyond its read right (shown so a viewer knows what their panel can do).
-pub const EXTRA: &[(&str, &str)] = &[("keys", "cr.keys:holders"), ("audit", "cr.audit:verify")];
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Role {
-    pub name: String,
-    pub actions: Vec<String>,
+/// The built site this binary carries (ui/dist at build time).
+pub mod site_files {
+    include!(concat!(env!("OUT_DIR"), "/site.rs"));
 }
 
-/// A role from its ce-iam policy text: every Allow statement's actions, in order. Anything else is refused.
-pub fn parse_role(name: &str, text: &str) -> Result<Role, String> {
-    let v: serde_json::Value = serde_json::from_str(text).map_err(|e| format!("{name}: {e}"))?;
-    if v["version"] != "ce-iam-policy-v1" {
-        return Err(format!("{name}: not a ce-iam-policy-v1 document"));
-    }
-    let mut actions = Vec::new();
-    for s in v["statements"].as_array().ok_or_else(|| format!("{name}: no statements"))? {
-        if s["effect"] != "Allow" {
-            return Err(format!("{name}: only Allow statements"));
-        }
-        for a in s["actions"].as_array().ok_or_else(|| format!("{name}: statement without actions"))? {
-            let a = a.as_str().ok_or_else(|| format!("{name}: action is not text"))?;
-            if !valid_ability(a) || !a.starts_with("cr.") {
-                return Err(format!("{name}: {a:?} is not a control-room ability"));
-            }
-            actions.push(a.to_string());
+/// Where the site is served from: `$CR_SHELL_WEB` when set, else the carried site written once to
+/// `~/.local/share/cr-shell/site/<digest of the index>/` (read only to the gateway from then on).
+pub fn site_dir() -> Result<std::path::PathBuf, String> {
+    if let Ok(d) = std::env::var("CR_SHELL_WEB") {
+        if !d.is_empty() {
+            return Ok(d.into());
         }
     }
-    Ok(Role { name: name.into(), actions })
-}
-
-pub fn valid_ability(a: &str) -> bool {
-    !a.is_empty() && a.len() <= 128 && a.contains(':') && a.chars().all(|c| c.is_ascii_alphanumeric() || "-_.@:=*".contains(c))
-}
-
-pub fn valid_person(p: &str) -> bool {
-    !p.is_empty() && p.len() <= 64 && p.chars().all(|c| c.is_ascii_alphanumeric() || "-_.@".contains(c))
-}
-
-/// `people.json`: person -> role name.
-pub fn parse_people(text: &str) -> Result<BTreeMap<String, String>, String> {
-    serde_json::from_str(text).map_err(|e| format!("people.json: {e}"))
-}
-
-pub struct Config {
-    pub people: BTreeMap<String, String>,
-    pub roles: BTreeMap<String, Role>,
-}
-
-impl Config {
-    /// `people.json` and every `<role>.json` in `dir`.
-    pub fn load(dir: &Path, people: &Path) -> Result<Config, String> {
-        let people = parse_people(&std::fs::read_to_string(people).map_err(|e| format!("{}: {e}", people.display()))?)?;
-        let mut roles = BTreeMap::new();
-        for e in std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?.flatten() {
-            let n = e.file_name().to_string_lossy().to_string();
-            if let Some(name) = n.strip_suffix(".json").filter(|r| r.starts_with("control-room.")) {
-                let r = parse_role(name, &std::fs::read_to_string(e.path()).map_err(|e| e.to_string())?)?;
-                roles.insert(name.to_string(), r);
-            }
-        }
-        Ok(Config { people, roles })
-    }
-
-    /// The abilities a person's browser grant carries, or why there is none.
-    pub fn abilities(&self, person: &str, now_ms: u64) -> Result<(String, Vec<String>), CrError> {
-        if !valid_person(person) {
-            return Err(CrError::Invalid { why: format!("{person:?} is not a signed-in person") });
-        }
-        let role = self.people.get(person).ok_or_else(|| CrError::Refused { needs: "a control-room role for this person".into() })?;
-        let r = self.roles.get(role).ok_or_else(|| CrError::Source { cell: "ce-iam".into(), why: format!("role {role} is not in the catalog") })?;
-        let mut a = vec![
-            format!("cr.shell:person={person}"),
-            format!("cr.shell:role={role}"),
-            format!("cr.shell:until={}", now_ms + TTL_S as u64 * 1000),
-        ];
-        a.extend(r.actions.iter().cloned());
-        Ok((role.clone(), a))
-    }
-}
-
-/// `Session` for a caller: who, which role, and which panels the verified chain can use.
-pub fn session(c: &ce_wire::Caller) -> Result<SessionInfo, CrError> {
-    let leaf = |k: &str| {
-        let head = format!("{}cr.shell:{k}=", ce_wire::ABILITY_RIGHT);
-        c.rights.iter().find_map(|r| r.strip_prefix(head.as_str())).unwrap_or("").to_string()
-    };
-    let person = leaf("person");
-    if person.is_empty() {
-        return Err(CrError::Refused { needs: "a grant minted by cr.shell after sign-in".into() });
-    }
-    let mut panels = Vec::new();
-    let mut refused = Vec::new();
-    for (p, api, right) in PANELS {
-        if cr_view::holds(c, right) {
-            let mut rights = vec![right.to_string()];
-            rights.extend(EXTRA.iter().filter(|(q, x)| q == p && cr_view::holds(c, x)).map(|(_, x)| x.to_string()));
-            let cell = api.to_string();
-            let scoped = c.rights.iter().any(|r| r.strip_prefix(ce_wire::ABILITY_RIGHT).is_some_and(|a| a.starts_with(&format!("{cell}:scope:"))));
-            panels.push(PanelGrant { panel: p.to_string(), api: cell, rights, scoped });
-        } else {
-            refused.push(PanelRefused { panel: p.to_string(), needs: right.to_string() });
+    let index = site_files::SITE.iter().find(|(n, _)| *n == "bundles.json").map(|(_, b)| *b).ok_or("this build carries no site (ui/dist was empty)")?;
+    let tag: String = index.iter().fold(0xcbf29ce484222325u64, |h, b| (h ^ *b as u64).wrapping_mul(0x100000001b3)).to_le_bytes().iter().map(|b| format!("{b:02x}")).collect();
+    let dir = std::path::PathBuf::from(format!("{}/.local/share/cr-shell/site/{tag}", std::env::var("HOME").unwrap_or_default()));
+    if !dir.join("index.html").exists() {
+        for (name, bytes) in site_files::SITE {
+            let p = dir.join(name);
+            std::fs::create_dir_all(p.parent().unwrap_or(&dir)).map_err(|e| e.to_string())?;
+            std::fs::write(&p, bytes).map_err(|e| format!("{}: {e}", p.display()))?;
         }
     }
-    Ok(SessionInfo {
-        person,
-        role: leaf("role"),
-        chain_id: cr_view::chain_id(c),
-        expires_at_ms: leaf("until").parse().unwrap_or(0),
-        panels,
-        refused,
-    })
+    Ok(dir)
 }
 
-pub trait Mint {
-    /// A link `<page>#g=...` for a fresh browser key holding `abilities` for `ttl_s`, and its end (unix seconds).
-    fn mint(&self, page: &str, abilities: &[String], ttl_s: u32) -> Result<(String, u64), String>;
+/// `cr.shell:<k>=<v>` from the caller's verified leaf, "" when absent.
+pub fn leaf(c: &ce_wire::Caller, k: &str) -> String {
+    let head = format!("{}cr.shell:{k}=", ce_wire::ABILITY_RIGHT);
+    c.rights.iter().find_map(|r| r.strip_prefix(head.as_str())).unwrap_or("").to_string()
 }
 
-/// The fragment of a minted link with the door the page must use.
-pub fn fragment(link: &str, door: &str) -> Result<String, CrError> {
-    let g = link.split_once('#').map(|(_, f)| f).filter(|f| f.starts_with("g="))
-        .ok_or_else(|| CrError::Source { cell: "wire.ws-door".into(), why: "mint gave no grant".into() })?;
-    Ok(format!("{g}&w={door}"))
+pub fn layout(c: &ce_wire::Caller) -> LayoutView {
+    let site = control_room_site::site();
+    let tabs = control_room_site::TABS
+        .iter()
+        .filter(|(slot, _)| site.root.slots.iter().any(|(s, p)| s == slot && ui_chain::holds(c, p.view.needs)))
+        .map(|(slot, label)| Tab { slot: slot.to_string(), label: label.to_string() })
+        .collect();
+    LayoutView { title: TITLE.into(), person: leaf(c, "person"), role: leaf(c, "role"), until_ms: leaf(c, "until").parse().unwrap_or(0), tabs }
+}
+
+/// The people file: `$CR_SHELL_PEOPLE` (the JSON itself, or a path to it), else `~/.config/control-room/people.json`,
+/// else Leif alone as root (the policy's owner).
+pub fn people_text() -> String {
+    if let Ok(v) = std::env::var("CR_SHELL_PEOPLE") {
+        if v.trim_start().starts_with('{') {
+            return v;
+        }
+        if let Ok(t) = std::fs::read_to_string(&v) {
+            return t;
+        }
+    }
+    let own = format!("{}/.config/control-room/people.json", std::env::var("HOME").unwrap_or_default());
+    std::fs::read_to_string(own).unwrap_or_else(|_| r#"{"leif": {"role": "root"}}"#.into())
+}
+
+/// The gateway's viewer: a person's role and grant abilities from the policy and the people file.
+pub fn viewer(person: &str) -> Result<site_gateway::Viewer, String> {
+    let people = control_room_policy::people(&people_text())?;
+    let (role, abilities) = control_room_policy::abilities(person, &people, ui_chain::now_ms())?;
+    Ok(site_gateway::Viewer { role, abilities })
 }

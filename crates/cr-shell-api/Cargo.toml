@@ -1,10 +1,11 @@
 [package]
 name = "cr-shell-api"
-version = "0.1.0"
-description = "Typed API of the cr.shell cell: the viewer's session and the panels their chain can use (types only)"
+version = "0.2.0"
+description = "cr.shell@2: the control room shell's contract (Layout) and its ControlRoom view with the keys, devices and audit slots; v1 frozen in src/versions/v1.rs"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
-ce-wire = { workspace = true }
+ce-wire = { workspace = true, features = ["client"] }
+ui-part = { workspace = true }

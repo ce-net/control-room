@@ -1,0 +1,21 @@
+# One repo = one cell = one function. The control room's shell: Layout per viewer (major 2; Session, major 1, frozen), and the
+# site's gateway face: a signed-in person's grant, their manifest, only their bundles, one socket.
+[cell]
+api = "cr.shell"
+crate = "cr-shell"
+args = ["serve"]
+kind = "function"
+keep = true  # the sign-in gate reaches its HTTP face by raw TCP, which never wakes an idle cell
+# Cells this one calls, as <api>@<major>; none is started by it (a view cell reports a missing source, it does not need it to start).
+depends_on = ["wire.ws-door@1"]
+
+[launch]
+health = "HealthOp"
+start_timeout_ms = 5000
+restart_backoff_ms = [1000, 300000]
+
+[placement]
+# active-active, stateless; where it runs is the deploy's placement table (docs/DESIGN.md section 11)
+
+[limits]
+disk_bytes = "128M"

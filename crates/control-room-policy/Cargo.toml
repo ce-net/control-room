@@ -1,0 +1,11 @@
+[package]
+name = "control-room-policy"
+version = "0.2.0"
+description = "Who may see what in the control room, declared once: the root and operator roles, and the people file that names who holds which, until when, scoped to which nodes and apps"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

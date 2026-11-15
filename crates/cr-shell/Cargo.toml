@@ -1,17 +1,23 @@
 [package]
 name = "cr-shell"
-version = "0.1.0"
-description = "The cr.shell cell: a signed-in person's browser grant attenuated to their control-room role, the panels it can use, the shell's page and its socket"
+version = "0.2.0"
+description = "The cr.shell cell: the control room's Layout (major 2; Session, major 1, frozen) and the site's gateway face: a signed-in person's grant, their manifest and only their bundles"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
 cr-shell-api = { path = "../cr-shell-api" }
-cr-view = { path = "../cr-view" }
-ce-wire = { workspace = true, features = ["server", "blocking"] }
+control-room-policy = { path = "../control-room-policy" }
+control-room-site = { path = "../control-room-site" }
+ui-chain = { workspace = true }
+site-gateway = { workspace = true }
+ce-wire = { workspace = true, features = ["server", "blocking", "client"] }
 ce-gate = { workspace = true }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "net", "time", "sync", "io-util", "fs"] }
 serde_json = "1"
+
+[dev-dependencies]
+ui-manifest = { workspace = true }
 hmac = "0.12"
 sha2 = "0.10"

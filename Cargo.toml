@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/cr-view", "crates/cr-shell-api", "crates/cr-shell", "crates/cr-keys-api", "crates/cr-devices-api", "crates/cr-audit-api"]
+members = ["crates/cr-shell-api", "crates/cr-shell", "crates/control-room-policy", "crates/control-room-site"]
 
 [workspace.package]
 edition = "2021"
@@ -8,8 +8,17 @@ license = "Apache-2.0"
 publish = false
 
 [workspace.dependencies]
-ce-wire = { git = "https://github.com/Leif-Rydenfalk/rust-stack", rev = "7083669b3240dce8dbc66142d7c9e127fab4aedf", default-features = false, features = ["codec"] }
+ce-wire = { git = "https://github.com/Leif-Rydenfalk/rust-stack", rev = "7083669b3240dce8dbc66142d7c9e127fab4aedf" }
 ce-gate = { git = "https://github.com/Leif-Rydenfalk/rust-stack", rev = "7083669b3240dce8dbc66142d7c9e127fab4aedf" }
+ui-part = { git = "https://github.com/ce-net/ui-cells", rev = "c4e6e2a94b58bfd363c6b91b18540e11a0902403" }
+ui-chain = { git = "https://github.com/ce-net/ui-cells", rev = "c4e6e2a94b58bfd363c6b91b18540e11a0902403" }
+ui-manifest = { git = "https://github.com/ce-net/ui-cells", rev = "c4e6e2a94b58bfd363c6b91b18540e11a0902403" }
+site-gateway = { git = "https://github.com/ce-net/ui-cells", rev = "c4e6e2a94b58bfd363c6b91b18540e11a0902403" }
+# the slot cells, pinned by commit: this is the site's cell.lock (a source contract that changes under the pin does
+# not build here until the pin moves)
+cr-keys-api = { git = "https://github.com/ce-net/cr-keys", rev = "7620a91b71c2e41bb44d94cafdb26d6bff110edd" }
+cr-devices-api = { git = "https://github.com/ce-net/cr-devices", rev = "4f409c5f6de8bc01e6435f5a7b32fbb92997d987" }
+cr-audit-api = { git = "https://github.com/ce-net/cr-audit", rev = "e810aeca8269559497791856080a12562abc4645" }
 
 [profile.release]
 lto = "thin"

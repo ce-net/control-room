@@ -1,0 +1,16 @@
+[package]
+name = "control-room-site"
+version = "0.2.0"
+description = "The control room's route and slot tree, declared once from its cells' views"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ui-part = { workspace = true }
+ui-manifest = { workspace = true }
+cr-shell-api = { path = "../cr-shell-api" }
+cr-keys-api = { workspace = true }
+cr-devices-api = { workspace = true }
+cr-audit-api = { workspace = true }
+control-room-policy = { path = "../control-room-policy" }

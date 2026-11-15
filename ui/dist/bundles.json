@@ -1,0 +1,18 @@
+{
+  "cr.shell@2/ControlRoom": {
+    "file": "_c/757b20c311080a76e51bc243db968caca0f4731c2459dc923f12c341b9bc6307.js",
+    "sha256": "757b20c311080a76e51bc243db968caca0f4731c2459dc923f12c341b9bc6307"
+  },
+  "cr.keys@2/KeyList": {
+    "file": "_c/3add77fc12a2d9dae37daf5ba5d33956c665bca70557d38e7de2bdc381a99f9a.js",
+    "sha256": "3add77fc12a2d9dae37daf5ba5d33956c665bca70557d38e7de2bdc381a99f9a"
+  },
+  "cr.devices@2/DeviceList": {
+    "file": "_c/4cc5b9bc7a8356ba2719c9ecfff1896e123a281c3848ee8e9c472f018dbcdc89.js",
+    "sha256": "4cc5b9bc7a8356ba2719c9ecfff1896e123a281c3848ee8e9c472f018dbcdc89"
+  },
+  "cr.audit@2/AuditTrail": {
+    "file": "_c/9c583c58d9872a98d2e733fc6f6bb4d45b6ff073789d5dcae4ee388423247be1.js",
+    "sha256": "9c583c58d9872a98d2e733fc6f6bb4d45b6ff073789d5dcae4ee388423247be1"
+  }
+}

@@ -138,6 +138,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
+name = "control-room-policy"
+version = "0.2.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "control-room-site"
+version = "0.2.0"
+dependencies = [
+ "control-room-policy",
+ "cr-audit-api",
+ "cr-devices-api",
+ "cr-keys-api",
+ "cr-shell-api",
+ "ui-manifest",
+ "ui-part",
+]
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -148,52 +169,55 @@ dependencies = [
 
 [[package]]
 name = "cr-audit-api"
-version = "0.1.0"
+version = "0.2.0"
+source = "git+https://github.com/ce-net/cr-audit?rev=e810aeca8269559497791856080a12562abc4645#e810aeca8269559497791856080a12562abc4645"
 dependencies = [
  "ce-wire",
+ "ui-part",
 ]
 
 [[package]]
 name = "cr-devices-api"
-version = "0.1.0"
+version = "0.2.0"
+source = "git+https://github.com/ce-net/cr-devices?rev=4f409c5f6de8bc01e6435f5a7b32fbb92997d987#4f409c5f6de8bc01e6435f5a7b32fbb92997d987"
 dependencies = [
  "ce-wire",
+ "ui-part",
 ]
 
 [[package]]
 name = "cr-keys-api"
-version = "0.1.0"
+version = "0.2.0"
+source = "git+https://github.com/ce-net/cr-keys?rev=7620a91b71c2e41bb44d94cafdb26d6bff110edd#7620a91b71c2e41bb44d94cafdb26d6bff110edd"
 dependencies = [
  "ce-wire",
+ "ui-part",
 ]
 
 [[package]]
 name = "cr-shell"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ce-gate",
  "ce-wire",
+ "control-room-policy",
+ "control-room-site",
  "cr-shell-api",
- "cr-view",
  "hmac",
  "serde_json",
  "sha2",
+ "site-gateway",
  "tokio",
+ "ui-chain",
+ "ui-manifest",
 ]
 
 [[package]]
 name = "cr-shell-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ce-wire",
-]
-
-[[package]]
-name = "cr-view"
-version = "0.1.0"
-dependencies = [
- "ce-gate",
- "ce-wire",
+ "ui-part",
 ]
 
 [[package]]
@@ -589,6 +613,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "site-gateway"
+version = "0.1.0"
+source = "git+https://github.com/ce-net/ui-cells?rev=c4e6e2a94b58bfd363c6b91b18540e11a0902403#c4e6e2a94b58bfd363c6b91b18540e11a0902403"
+dependencies = [
+ "hmac",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "ui-manifest",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -693,6 +729,33 @@ name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+
+[[package]]
+name = "ui-chain"
+version = "0.1.0"
+source = "git+https://github.com/ce-net/ui-cells?rev=c4e6e2a94b58bfd363c6b91b18540e11a0902403#c4e6e2a94b58bfd363c6b91b18540e11a0902403"
+dependencies = [
+ "ce-gate",
+ "ce-wire",
+]
+
+[[package]]
+name = "ui-manifest"
+version = "0.1.0"
+source = "git+https://github.com/ce-net/ui-cells?rev=c4e6e2a94b58bfd363c6b91b18540e11a0902403#c4e6e2a94b58bfd363c6b91b18540e11a0902403"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ui-part",
+]
+
+[[package]]
+name = "ui-part"
+version = "0.1.0"
+source = "git+https://github.com/ce-net/ui-cells?rev=c4e6e2a94b58bfd363c6b91b18540e11a0902403#c4e6e2a94b58bfd363c6b91b18540e11a0902403"
+dependencies = [
+ "ce-wire",
+]
 
 [[package]]
 name = "unicode-ident"
