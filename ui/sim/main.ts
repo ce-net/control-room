@@ -149,7 +149,7 @@ function mount(v: Viewer): void {
     ' ',
     h('button', { class: 'btn quiet', pressed: v === 'operator', text: 'operator', onclick: () => mount('operator') }),
   );
-  app.replaceChildren(bar, stage);
+  app.replaceChildren(h('div', { class: 'col' }, bar), stage);
   const stops: (() => void)[] = [];
   const child = (name: string): HTMLElement => {
     const el = h('div', { class: 'slot', attrs: { 'data-state': 'empty' } });

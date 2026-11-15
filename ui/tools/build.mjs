@@ -7,7 +7,7 @@
 import { build } from 'esbuild';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -113,3 +113,10 @@ writeFileSync(join(sim, 'index.html'), page('Control room (sim)', simName, simJs
 const kb = (b) => Math.round(b.length / 102.4) / 10;
 console.log(JSON.stringify({ bundles: Object.fromEntries(Object.entries(bundles).map(([k, v]) => [k, v.file])), host: hostName, sim: simName, kB: Object.fromEntries(CELLS.map((c) => [c.key, kb(readFileSync(join(out, bundles[c.key].file)))])), from: relative(dev, repo) }));
 if (!existsSync(join(out, 'index.html'))) process.exit(1);
+
+// the public page is served from docs/ on main (GitHub Pages): the sim and nothing of the live system
+const docs = join(repo, 'docs');
+for (const f of readdirSync(docs)) if (/^(sim\.[0-9a-f]+\.js|app\.[0-9a-f]+\.css|index\.html)$/.test(f)) rmSync(join(docs, f));
+rmSync(join(docs, 'fonts'), { recursive: true, force: true });
+cpSync(sim, docs, { recursive: true });
+writeFileSync(join(docs, '.nojekyll'), '');
