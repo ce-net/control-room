@@ -12,6 +12,13 @@ use cr_shell_api::*;
 
 pub const TITLE: &str = "Control room";
 
+pub const CELL: &str = "cr.shell";
+
+/// The one grant this cell's own key holds, minted by the node (`ce-iam grant --to <cell key> --action <each>`, kept
+/// with the key in `<ce data dir>/cell-keys/cr.shell/`): minting a viewer's grant through wire.ws-door, nothing else.
+/// A taken shell holds this, never the node's root.
+pub const GRANT: &[&str] = &["wire.ws-door:mint", "delegate:1"];
+
 /// The built site this binary carries (ui/dist at build time).
 pub mod site_files {
     include!(concat!(env!("OUT_DIR"), "/site.rs"));

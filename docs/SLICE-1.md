@@ -32,7 +32,10 @@ file, until a date. The people file lives on the node (`~/.config/control-room/p
 ## Deploy
 
 On ops-1 by typed ops: `cell.install Upgrade {api, source: Repo}` for each of the four cells, from the pinned commits;
-each registered both majors (two schemas per cell). The built site (one module per view, named by its sha256) is carried
+each registered both majors (two schemas per cell). Each backend runs with its own cell key, never the node's: the
+node minted each one grant of exactly its `GRANT` (cr.shell `wire.ws-door:mint`; cr.keys `keys:list`, `keys:meta`;
+cr.devices `cell.install:list`, `fleet.inventory:read`; cr.audit `audit:read`, `keys:audit`; each also `ui.trace:write`
+where it traces, and `delegate:1` to attenuate per source), kept in `<ce data dir>/cell-keys/<api>/`. The built site (one module per view, named by its sha256) is carried
 inside the `cr-shell` binary. The gateway face answers on loopback `:8834` for the apps.ce-net.com sign-in gate.
 
 ## Proofs

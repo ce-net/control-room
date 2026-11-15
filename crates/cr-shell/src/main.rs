@@ -2,8 +2,9 @@
 //! site's gateway face on loopback for the sign-in gate (repo:ui-cells crates/site-gateway): `$CR_SHELL_HTTP`, default
 //! 127.0.0.1:8834; `$CR_SHELL_WEB`, the built site, default the one this binary carries; `$CR_SHELL_WIRE`, wire.ws-door,
 //! default 127.0.0.1:7792; `$CR_SHELL_PEOPLE`, the people file (control-room-policy).
-//! `cr-shell mint <person> [<page>]`: print a link for that person's grant, minted by this node (operators only: it
-//! needs this node's own key, which holds wire.ws-door:mint).
+//! `cr-shell mint <person> [<page>]`: print a link for that person's grant, minted by wire.ws-door (operators only: it
+//! needs the cell's own key, whose grant holds wire.ws-door:mint).
+//! The cell's own key and grant ([`cr_shell::GRANT`], `<ce data dir>/cell-keys/cr.shell/`): never the node's key.
 use ce_wire::Server;
 use cr_shell_api::*;
 use site_gateway::Mint;
@@ -11,7 +12,7 @@ use cr_shell::door_api::wire_ws_door::{self, MintReq, WireWsDoor};
 use std::sync::Arc;
 use std::time::Instant;
 
-/// Mint through wire.ws-door's typed op with this node's own proof (the node holds wire.ws-door:mint).
+/// Mint through wire.ws-door's typed op with the cell's own proof (its grant holds wire.ws-door:mint).
 struct Door;
 impl Mint for Door {
     fn mint(&self, page: &str, abilities: &[String], ttl_s: u32) -> Result<(String, u64), String> {
@@ -34,7 +35,8 @@ fn home() -> String {
 }
 
 async fn serve() -> Result<(), String> {
-    let me = ce_gate::node_identity().map_err(|e| e.to_string())?;
+    // this cell's own key and narrow grant (never the node's key); the gate roots callers' chains at the grant's root
+    let me = ui_chain::init(cr_shell::CELL)?.root();
     let started = Instant::now();
     control_room_policy::people(&cr_shell::people_text())?;
     let web = site_gateway::Web {
@@ -55,14 +57,14 @@ async fn serve() -> Result<(), String> {
             std::process::exit(1)
         }
     });
-    let gate = ce_gate::Gate::<CrShell>::new(me.node_id(), ce_gate::mesh_roots()).into_fn();
+    let gate = ce_gate::Gate::<CrShell>::new(me, ce_gate::mesh_roots()).into_fn();
     let v2 = Server::<CrShell>::new(gate)
         .on::<HealthOp, _, _>(move |_: (), _| async move { Ok(Health { ok: true, version: env!("CARGO_PKG_VERSION").into(), uptime_s: started.elapsed().as_secs() }) })
         .on::<Layout, _, _>(|_: LayoutReq, who| async move { Ok(cr_shell::layout(&who)) })
         .audit(ce_gate::audit::file())
         .serve_door();
     use cr_shell_api::versions::v1 as old;
-    let gate1 = ce_gate::Gate::<old::CrShell>::new(me.node_id(), ce_gate::mesh_roots()).into_fn();
+    let gate1 = ce_gate::Gate::<old::CrShell>::new(me, ce_gate::mesh_roots()).into_fn();
     let v1 = Server::<old::CrShell>::new(gate1)
         .on::<old::HealthOp, _, _>(move |_: (), _| async move { Ok(old::Health { ok: true, version: env!("CARGO_PKG_VERSION").into(), uptime_s: started.elapsed().as_secs() }) })
         .on::<old::Session, _, _>(|_: (), who| async move { Ok(cr_shell::v1::session(&who)) })
@@ -74,6 +76,7 @@ async fn serve() -> Result<(), String> {
 }
 
 fn mint(person: &str, page: &str) -> Result<(), String> {
+    ui_chain::init(cr_shell::CELL)?;
     let v = cr_shell::viewer(person)?;
     let door = format!("{}wire", page.replace("https://", "wss://").replace("http://", "ws://"));
     let (link, not_after) = Door.mint(page, &v.abilities, 900)?;
