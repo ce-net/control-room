@@ -16,7 +16,7 @@ use std::time::Instant;
 struct Door;
 impl Mint for Door {
     fn mint(&self, page: &str, abilities: &[String], ttl_s: u32) -> Result<(String, u64), String> {
-        let token = ui_chain::source_token::<WireWsDoor>(&["wire.ws-door:mint"], 120, None)?;
+        let token = ui_chain::source_token::<WireWsDoor>(&cr_shell::door_abilities(), 120, None)?;
         let c = ce_wire::blocking::Client::<WireWsDoor>::by_name(token).map_err(|e| format!("wire.ws-door: {e:?}"))?;
         let m = c
             .call::<wire_ws_door::Mint>(&MintReq { page: page.into(), abilities: abilities.to_vec(), ttl_s })

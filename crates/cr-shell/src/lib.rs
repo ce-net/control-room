@@ -15,9 +15,22 @@ pub const TITLE: &str = "Control room";
 pub const CELL: &str = "cr.shell";
 
 /// The one grant this cell's own key holds, minted by the node (`ce-iam grant --to <cell key> --action <each>`, kept
-/// with the key in `<ce data dir>/cell-keys/cr.shell/`): minting a viewer's grant through wire.ws-door, nothing else.
-/// A taken shell holds this, never the node's root.
-pub const GRANT: &[&str] = &["wire.ws-door:mint", "delegate:1"];
+/// with the key in `<ce data dir>/cell-keys/cr.shell/`): minting a viewer's grant through wire.ws-door, and only of
+/// the control room's own rights (`wire.ws-door:mint-for:..`, which the door holds Mint to; it never mints keys,
+/// cell.install or a wildcard for anyone but the node). A taken shell holds this, never the node's root.
+pub const GRANT: &[&str] = &[
+    "wire.ws-door:mint",
+    "wire.ws-door:mint-for:cr.shell:*",
+    "wire.ws-door:mint-for:cr.keys:*",
+    "wire.ws-door:mint-for:cr.devices:*",
+    "wire.ws-door:mint-for:cr.audit:*",
+    "delegate:1",
+];
+
+/// What the shell presents to wire.ws-door: its grant, less the right to delegate.
+pub fn door_abilities() -> Vec<&'static str> {
+    GRANT.iter().copied().filter(|a| !a.starts_with("delegate:")).collect()
+}
 
 /// The built site this binary carries (ui/dist at build time).
 pub mod site_files {
