@@ -78,7 +78,7 @@ dependencies = [
 [[package]]
 name = "ce-gate"
 version = "0.1.0"
-source = "git+https://github.com/Leif-Rydenfalk/rust-stack?rev=2aede6d81d2d856d1d17b383624dfd19ce6aeba9#2aede6d81d2d856d1d17b383624dfd19ce6aeba9"
+source = "git+https://github.com/Leif-Rydenfalk/rust-stack?rev=d283bd528f96effabcf4dec56eb4fad1bec08d27#d283bd528f96effabcf4dec56eb4fad1bec08d27"
 dependencies = [
  "ce-cap",
  "ce-identity",
@@ -108,7 +108,7 @@ dependencies = [
 [[package]]
 name = "ce-wire"
 version = "0.1.0"
-source = "git+https://github.com/Leif-Rydenfalk/rust-stack?rev=2aede6d81d2d856d1d17b383624dfd19ce6aeba9#2aede6d81d2d856d1d17b383624dfd19ce6aeba9"
+source = "git+https://github.com/Leif-Rydenfalk/rust-stack?rev=d283bd528f96effabcf4dec56eb4fad1bec08d27#d283bd528f96effabcf4dec56eb4fad1bec08d27"
 dependencies = [
  "nix",
  "postcard",
@@ -177,7 +177,7 @@ dependencies = [
 [[package]]
 name = "cr-audit-api"
 version = "0.2.0"
-source = "git+https://github.com/ce-net/cr-audit?rev=80e7b6274ff601d84c7b4af41cb6675336d7b2d0#80e7b6274ff601d84c7b4af41cb6675336d7b2d0"
+source = "git+https://github.com/ce-net/cr-audit?rev=bdfb7acd029119b5e7bbe296956f8985c666b93c#bdfb7acd029119b5e7bbe296956f8985c666b93c"
 dependencies = [
  "ce-wire",
  "ui-part",
@@ -186,7 +186,7 @@ dependencies = [
 [[package]]
 name = "cr-devices-api"
 version = "0.2.0"
-source = "git+https://github.com/ce-net/cr-devices?rev=17ac14cc23c2dc4ae0142ac8e1145f2ee9901684#17ac14cc23c2dc4ae0142ac8e1145f2ee9901684"
+source = "git+https://github.com/ce-net/cr-devices?rev=760e0415c6f8b132f490e3b198e8e0d417ce1e48#760e0415c6f8b132f490e3b198e8e0d417ce1e48"
 dependencies = [
  "ce-wire",
  "ui-part",
@@ -195,7 +195,7 @@ dependencies = [
 [[package]]
 name = "cr-keys-api"
 version = "0.2.0"
-source = "git+https://github.com/ce-net/cr-keys?rev=8da837d331027f69d17167751b33c827848d826a#8da837d331027f69d17167751b33c827848d826a"
+source = "git+https://github.com/ce-net/cr-keys?rev=59d6268ecdac4981956e400cff111906590c38a3#59d6268ecdac4981956e400cff111906590c38a3"
 dependencies = [
  "ce-wire",
  "ui-part",
@@ -756,7 +756,7 @@ dependencies = [
 [[package]]
 name = "site-gateway"
 version = "0.1.0"
-source = "git+https://github.com/ce-net/ui-cells?rev=12b36bc5e02f139858c9cc90fff0c7b4f58ab9a3#12b36bc5e02f139858c9cc90fff0c7b4f58ab9a3"
+source = "git+https://github.com/ce-net/ui-cells?rev=103703220a8554d07af1ed6a1eea5ef0e5a72090#103703220a8554d07af1ed6a1eea5ef0e5a72090"
 dependencies = [
  "hmac",
  "serde_json",
@@ -875,7 +875,7 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 [[package]]
 name = "ui-chain"
 version = "0.1.0"
-source = "git+https://github.com/ce-net/ui-cells?rev=12b36bc5e02f139858c9cc90fff0c7b4f58ab9a3#12b36bc5e02f139858c9cc90fff0c7b4f58ab9a3"
+source = "git+https://github.com/ce-net/ui-cells?rev=103703220a8554d07af1ed6a1eea5ef0e5a72090#103703220a8554d07af1ed6a1eea5ef0e5a72090"
 dependencies = [
  "ce-gate",
  "ce-wire",
@@ -885,7 +885,7 @@ dependencies = [
 [[package]]
 name = "ui-manifest"
 version = "0.1.0"
-source = "git+https://github.com/ce-net/ui-cells?rev=12b36bc5e02f139858c9cc90fff0c7b4f58ab9a3#12b36bc5e02f139858c9cc90fff0c7b4f58ab9a3"
+source = "git+https://github.com/ce-net/ui-cells?rev=103703220a8554d07af1ed6a1eea5ef0e5a72090#103703220a8554d07af1ed6a1eea5ef0e5a72090"
 dependencies = [
  "serde",
  "serde_json",
@@ -895,7 +895,7 @@ dependencies = [
 [[package]]
 name = "ui-part"
 version = "0.1.0"
-source = "git+https://github.com/ce-net/ui-cells?rev=12b36bc5e02f139858c9cc90fff0c7b4f58ab9a3#12b36bc5e02f139858c9cc90fff0c7b4f58ab9a3"
+source = "git+https://github.com/ce-net/ui-cells?rev=103703220a8554d07af1ed6a1eea5ef0e5a72090#103703220a8554d07af1ed6a1eea5ef0e5a72090"
 dependencies = [
  "ce-wire",
 ]
