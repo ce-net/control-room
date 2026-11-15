@@ -241,3 +241,8 @@ button[disabled]{cursor:not-allowed;opacity:.5}
 }
 .rail .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block;margin-right:8px}
 .slot{display:block}
+@media (max-width:600px){
+  .rail{top:auto;bottom:0}
+  .top .btns{align-self:stretch;justify-content:space-between}
+  .who{white-space:normal}
+}

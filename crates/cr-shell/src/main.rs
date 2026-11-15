@@ -83,12 +83,48 @@ fn mint(person: &str, page: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The nonce of the grant in a minted link (the leaf of its chain), for `ce revoke <nonce>` on the node that minted it.
+fn nonce(link: &str) -> Result<(), String> {
+    let g = link.split_once("#g=").map(|(_, f)| f).ok_or("no #g= in the link")?;
+    let chain = g.split('&').next().and_then(|g| g.split_once('.')).map(|(_, c)| c).ok_or("no chain in the grant")?;
+    let bytes = b64u(chain).ok_or("the chain is not base64url")?;
+    let caps = ce_gate::ce_cap::decode_chain_bytes(&bytes).map_err(|e| format!("{e:?}"))?;
+    let leaf = caps.last().ok_or("an empty chain")?;
+    println!("{}", leaf.cap.nonce);
+    Ok(())
+}
+
+fn b64u(s: &str) -> Option<Vec<u8>> {
+    let v = |c: u8| -> Option<u32> {
+        Some(match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'-' | b'+' => 62,
+            b'_' | b'/' => 63,
+            _ => return None,
+        } as u32)
+    };
+    let s = s.trim_end_matches('=').as_bytes();
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    for ch in s.chunks(4) {
+        let mut n = 0u32;
+        for (i, c) in ch.iter().enumerate() {
+            n |= v(*c)? << (18 - 6 * i);
+        }
+        let bytes = n.to_be_bytes();
+        out.extend_from_slice(&bytes[1..ch.len()]);
+    }
+    Some(out)
+}
+
 fn main() {
     let a: Vec<String> = std::env::args().collect();
     let r = match a.get(1).map(String::as_str) {
         Some("serve") => tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| e.to_string()).and_then(|rt| rt.block_on(serve())),
         Some("mint") if a.len() >= 3 => mint(&a[2], a.get(3).map(String::as_str).unwrap_or("http://127.0.0.1:8834/")),
-        _ => Err("usage: cr-shell serve | mint <person> [<page>]".into()),
+        Some("nonce") if a.len() >= 3 => nonce(&a[2]),
+        _ => Err("usage: cr-shell serve | mint <person> [<page>] | nonce <link>".into()),
     };
     if let Err(e) = r {
         eprintln!("cr-shell: {e}");
