@@ -31,7 +31,7 @@ ui_part::views! {
         events {}
         data { layout: Layout }
         streams {}
-        slots { keys: "cr.keys@2", devices: "cr.devices@2", audit: "cr.audit@2" }
+        slots { keys: "cr.keys@2", devices: "cr.devices@2", audit: "cr.audit@2", quota: "sub.gateway@1" }
         speaks [2];
     }
     parts {}

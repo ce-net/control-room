@@ -15,8 +15,8 @@ export interface ControlRoomSource {
 export interface ControlRoomData {
   readonly layout: Awaited<ReturnType<Client['layout']>>;
 }
-/** slots: keys = cell:cr.keys@2, devices = cell:cr.devices@2, audit = cell:cr.audit@2 */
-export type ControlRoomSlot = 'keys' | 'devices' | 'audit';
+/** slots: keys = cell:cr.keys@2, devices = cell:cr.devices@2, audit = cell:cr.audit@2, quota = cell:sub.gateway@1 */
+export type ControlRoomSlot = 'keys' | 'devices' | 'audit' | 'quota';
 export const ControlRoom = defineView<ControlRoomProps, ControlRoomData, ControlRoomEvents, ControlRoomSource, ControlRoomSlot>({
   api: API, major: MAJOR, view: 'ControlRoom', needs: 'cr.shell:open',
   events: [],

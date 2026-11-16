@@ -7,7 +7,7 @@ use ui_manifest::{Place, Site};
 pub const ROUTE: &str = "/control-room/*";
 
 /// The slots in tab order and their labels.
-pub const TABS: &[(&str, &str)] = &[("keys", "Keys"), ("devices", "Devices"), ("audit", "Audit")];
+pub const TABS: &[(&str, &str)] = &[("keys", "Keys"), ("devices", "Devices"), ("audit", "Audit"), ("quota", "Quota")];
 
 pub fn site() -> Site {
     let leaf = |v: ui_part::ViewShape| Place { view: v, slots: vec![] };
@@ -20,6 +20,7 @@ pub fn site() -> Site {
                 ("keys", leaf(cr_keys_api::VIEWS[0])),
                 ("devices", leaf(cr_devices_api::VIEWS[0])),
                 ("audit", leaf(cr_audit_api::VIEWS[0])),
+                ("quota", leaf(sub_gateway_api::VIEWS[0])),
             ],
         },
     }
@@ -52,7 +53,7 @@ mod tests {
         for v in views() {
             assert!(covers(&a, v.needs), "no role holds {}", v.needs);
         }
-        for p in cr_keys_api::PARTS.iter().chain(cr_devices_api::PARTS).chain(cr_audit_api::PARTS) {
+        for p in cr_keys_api::PARTS.iter().chain(cr_devices_api::PARTS).chain(cr_audit_api::PARTS).chain(sub_gateway_api::PARTS) {
             assert!(covers(&a, p.right), "no role holds {}", p.right);
         }
     }

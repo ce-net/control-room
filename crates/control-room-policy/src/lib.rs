@@ -1,6 +1,6 @@
 //! The control room's policy, declared once. Two roles:
 //!
-//! - `root` (Leif): every control-room right, every field, every row.
+//! - `root` (Leif): every control-room right, every field, every row; the quota board (sub.gateway, read only).
 //! - `operator` (a named person, until a date): the shell, devices and the audit trail, read only; rows only of the
 //!   nodes and apps their entry names (`where` caveats signed into their grant); no `tailscale`, `passkeys` or
 //!   `detail` field; no right of keys, renewals or approvals, so their browser receives no byte naming those cells.
@@ -25,6 +25,8 @@ pub const ROOT: Role = Role {
         "cr.keys:health", "cr.keys:read", "cr.keys:holders", "cr.keys:history",
         "cr.devices:health", "cr.devices:read", "cr.devices:net", "cr.devices:passkeys",
         "cr.audit:health", "cr.audit:read", "cr.audit:detail", "cr.audit:verify",
+        // the quota board (sub.gateway): every agent's buckets, read only; never ask or set from a browser
+        "sub.gateway:health", "sub.gateway:board",
     ],
 };
 
@@ -156,7 +158,8 @@ mod tests {
     #[test]
     fn no_role_holds_a_right_outside_the_control_room() {
         for r in ROLES {
-            assert!(r.rights.iter().all(|a| a.starts_with("cr.")), "{}", r.name);
+            // the control room's cells, and the quota slot's own face (sub.gateway's board: read only, never ask or set)
+            assert!(r.rights.iter().all(|a| a.starts_with("cr.") || matches!(*a, "sub.gateway:health" | "sub.gateway:board")), "{}", r.name);
             assert!(!r.rights.iter().any(|a| a.ends_with('*')), "{}", r.name);
         }
     }

@@ -161,6 +161,7 @@ dependencies = [
  "cr-devices-api",
  "cr-keys-api",
  "cr-shell-api",
+ "sub-gateway-api",
  "ui-manifest",
  "ui-part",
 ]
@@ -789,6 +790,15 @@ checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
 dependencies = [
  "base64ct",
  "der",
+]
+
+[[package]]
+name = "sub-gateway-api"
+version = "0.1.0"
+source = "git+https://github.com/Leif-Rydenfalk/sub-gateway?rev=4c63c0247bb1108cb90bb0bc99be0c8d271bacc0#4c63c0247bb1108cb90bb0bc99be0c8d271bacc0"
+dependencies = [
+ "ce-wire",
+ "ui-part",
 ]
 
 [[package]]

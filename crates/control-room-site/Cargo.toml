@@ -12,5 +12,6 @@ ui-manifest = { workspace = true }
 cr-shell-api = { path = "../cr-shell-api" }
 cr-keys-api = { workspace = true }
 cr-devices-api = { workspace = true }
+sub-gateway-api = { workspace = true }
 cr-audit-api = { workspace = true }
 control-room-policy = { path = "../control-room-policy" }

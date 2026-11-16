@@ -10,5 +10,6 @@ export const CELLS = [
   { repo: join(dev, 'cr-keys'), contract: 'crates/cr-keys-api/src/lib.rs', ident: 'CrKeys', key: 'cr.keys@2/KeyList', view: 'ui/src/KeyList.ts' },
   { repo: join(dev, 'cr-devices'), contract: 'crates/cr-devices-api/src/lib.rs', ident: 'CrDevices', key: 'cr.devices@2/DeviceList', view: 'ui/src/DeviceList.ts' },
   { repo: join(dev, 'cr-audit'), contract: 'crates/cr-audit-api/src/lib.rs', ident: 'CrAudit', key: 'cr.audit@2/AuditTrail', view: 'ui/src/AuditTrail.ts' },
+  { repo: join(dev, 'sub-gateway'), contract: 'crates/sub-gateway-api/src/lib.rs', ident: 'SubGateway', key: 'sub.gateway@1/QuotaBoard', view: 'ui/src/QuotaBoard.ts' },
 ];
 

@@ -24,6 +24,9 @@ pub const GRANT: &[&str] = &[
     "wire.ws-door:mint-for:cr.keys",
     "wire.ws-door:mint-for:cr.devices",
     "wire.ws-door:mint-for:cr.audit",
+    // the quota slot: only sub.gateway's read-only board, never its ask or set
+    "wire.ws-door:mint-for:sub.gateway:health",
+    "wire.ws-door:mint-for:sub.gateway:board",
     "delegate:1",
 ];
 

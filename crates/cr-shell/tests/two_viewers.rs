@@ -24,7 +24,7 @@ fn caller<A: ce_wire::Api>(a: &[String]) -> Caller {
 fn layout_names_only_the_tabs_a_viewer_may_open() {
     let l = cr_shell::layout(&caller::<cr_shell_api::CrShell>(&abilities("leif")));
     assert_eq!((l.person.as_str(), l.role.as_str()), ("leif", "root"));
-    assert_eq!(l.tabs.iter().map(|t| t.slot.as_str()).collect::<Vec<_>>(), ["keys", "devices", "audit"]);
+    assert_eq!(l.tabs.iter().map(|t| t.slot.as_str()).collect::<Vec<_>>(), ["keys", "devices", "audit", "quota"]);
     let l = cr_shell::layout(&caller::<cr_shell_api::CrShell>(&abilities("ops")));
     assert_eq!(l.tabs.iter().map(|t| t.slot.as_str()).collect::<Vec<_>>(), ["devices", "audit"]);
     assert!(!format!("{l:?}").to_lowercase().contains("key"));

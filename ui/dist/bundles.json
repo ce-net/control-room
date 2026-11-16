@@ -14,5 +14,9 @@
   "cr.audit@2/AuditTrail": {
     "file": "_c/9c583c58d9872a98d2e733fc6f6bb4d45b6ff073789d5dcae4ee388423247be1.js",
     "sha256": "9c583c58d9872a98d2e733fc6f6bb4d45b6ff073789d5dcae4ee388423247be1"
+  },
+  "sub.gateway@1/QuotaBoard": {
+    "file": "_c/ffb2c153f716f7fb52d2ca48adccdadbade4e785aca3ff22a795e0631f45e858.js",
+    "sha256": "ffb2c153f716f7fb52d2ca48adccdadbade4e785aca3ff22a795e0631f45e858"
   }
 }

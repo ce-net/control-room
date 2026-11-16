@@ -18,6 +18,8 @@ site-gateway = { git = "https://github.com/ce-net/ui-cells", rev = "103703220a85
 # not build here until the pin moves)
 cr-keys-api = { git = "https://github.com/ce-net/cr-keys", rev = "59d6268ecdac4981956e400cff111906590c38a3" }
 cr-devices-api = { git = "https://github.com/ce-net/cr-devices", rev = "760e0415c6f8b132f490e3b198e8e0d417ce1e48" }
+# the quota slot: sub.gateway's own face (QuotaBoard), repo:sub-gateway
+sub-gateway-api = { git = "https://github.com/Leif-Rydenfalk/sub-gateway", rev = "4c63c0247bb1108cb90bb0bc99be0c8d271bacc0" }
 cr-audit-api = { git = "https://github.com/ce-net/cr-audit", rev = "bdfb7acd029119b5e7bbe296956f8985c666b93c" }
 
 [profile.release]
